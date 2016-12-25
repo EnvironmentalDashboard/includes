@@ -1,2 +1,4 @@
 db.php
+test*
+*.zip
 .DS_Store
