@@ -1,7 +1,7 @@
 <?php
 date_default_timezone_set("America/New_York");
 /**
- * For retrieving meter data
+ * For retrieving meter data from the BuildingOS API
  *
  * @author Tim Robert-Fitzgerald June 2016
  */
@@ -73,12 +73,43 @@ class Meter {
     return $stmt->fetchAll();
   }
 
-  public function getDataRes($meter_id, $from, $to, $res = 'live') {
+  /**
+   * Like getData(), but changes resolution to 24hrs
+   *
+   * @param $meter_id is the id of the meter
+   * @param $from is the unix timestamp for the starting period of the data
+   * @param $to is the unix timestamp for the ending period of the data
+   * @return see above
+   */
+  public function getDailyData($meter_id, $from, $to) {
     $stmt = $this->db->prepare('SELECT value, recorded FROM meter_data
-      WHERE meter_id = ? AND resolution != ? AND recorded > ? AND recorded < ?
+      WHERE meter_id = ? AND resolution = ? AND recorded > ? AND recorded < ?
       ORDER BY recorded ASC');
-    $stmt->execute(array($meter_id, $res, $from, $to));
-    return $stmt->fetchAll();
+    $stmt->execute(array($meter_id, 'hour', $from, $to));
+    $return = array();
+    $once = 0;
+    foreach ($stmt->fetchAll() as $row) {
+      if ($once === 0) {
+        $once++;
+        $day = date('w', $row['recorded']);
+        $buffer = array($row['value']);
+        $recorded = $row['recorded'];
+      }
+      else {
+        if (date('w', $row['recorded']) !== $day) {
+          $return[] = array('value' => (array_sum($buffer)/count($buffer)),
+                            'recorded' => mktime(11, 0, 0, date('n', $recorded), date('j', $recorded), date('Y', $recorded)));
+          $recorded = $row['recorded'];
+          $day = date('w', $row['recorded']);
+          $buffer = array($row['value']);
+        }
+        else {
+          $buffer[] = $row['value'];
+          $day = date('w', $row['recorded']);
+        }
+      }
+    }
+    return $return;
   }
 
   /**

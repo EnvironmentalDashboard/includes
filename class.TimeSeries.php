@@ -21,7 +21,12 @@ class TimeSeries extends Meter {
   */
   public function __construct($db, $meter_id, $start, $end, $res = null, $min = null, $max = null, $alt_data = null) {
     parent::__construct($db);
-    $this->data = ($alt_data === null) ? parent::getData($meter_id, $start, $end, $res) : $alt_data;
+    if ($res === 'daily') {
+      $this->data = ($alt_data === null) ? parent::getDailyData($meter_id, $start, $end) : $alt_data;
+    }
+    else {
+      $this->data = ($alt_data === null) ? parent::getData($meter_id, $start, $end, $res) : $alt_data;
+    }
     $this->fill = true;
     $this->dashed = true;
     $this->meter_id = $meter_id;
@@ -44,6 +49,10 @@ class TimeSeries extends Meter {
     //   var_dump($this->data);
     //   die('No data!');
     // }
+    echo "<!--";
+    echo "$meter_id $start $end";
+    var_dump($this->data);
+    echo "-->\n";
   }
 
   /**
