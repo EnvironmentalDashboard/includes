@@ -198,10 +198,6 @@ class TimeSeries extends Meter {
     if (isset($_GET['start']) && is_numeric($_GET['start'])) {
       $yMin = $_GET['start'];
     }
-    echo "<!--";
-    echo "Min: $yMin\nMax: $yMax";
-    var_dump($this->value);
-    echo "-->";
     // If yMin and yMax are identical, then
     // adjust the yMin and yMax values to actually
     // make a graph. Also avoids division by zero errors.
