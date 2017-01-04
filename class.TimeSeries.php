@@ -19,9 +19,9 @@ class TimeSeries extends Meter {
    * @param $max if not null, the graph will be scaled to this number rather than the datas max
    * @param $alt_data if not null, will be used instead of calling getData()
   */
-  public function __construct($db, $meter_id, $start, $end, $min = null, $max = null, $alt_data = null) {
+  public function __construct($db, $meter_id, $start, $end, $res = null, $min = null, $max = null, $alt_data = null) {
     parent::__construct($db);
-    $this->data = ($alt_data === null) ? parent::getData($meter_id, $start, $end) : $alt_data;
+    $this->data = ($alt_data === null) ? parent::getData($meter_id, $start, $end, $res) : $alt_data;
     $this->fill = true;
     $this->dashed = true;
     $this->meter_id = $meter_id;
