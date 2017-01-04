@@ -36,6 +36,8 @@ class TimeSeries extends Meter {
     $this->count = count($this->value);
     $this->max = null;
     $this->min = null;
+    $this->baseload = PHP_INT_MAX;
+    $this->peak = 0;
     $this->pad = 40; // Amount to pad sides of chart in pixels; set to 0 to turn off
     // if (empty($this->data)) {
     //   echo "Called with __construct(\$db, $meter_id, $start, $end, $min, $max, $alt_data);\n";
@@ -91,6 +93,12 @@ class TimeSeries extends Meter {
         $y = $this->convertRange(abs($point - $max), 0, $max - $min, 0, $height) + $offset;
         echo round($x, 1) . ',' . round($y, 1) . ' ';
         // echo "{$x},{$y} ";
+        if ($y > $this->peak) {
+          $this->peak = $y;
+        }
+        if ($y < $this->baseload) {
+          $this->baseload = $y;
+        }
       }
       $x += $increment;
     }
