@@ -49,10 +49,10 @@ class TimeSeries extends Meter {
     //   var_dump($this->data);
     //   die('No data!');
     // }
-    echo "<!--";
-    echo "$meter_id $start $end";
-    var_dump($this->data);
-    echo "-->\n";
+    // echo "<!--";
+    // echo "$meter_id $start $end";
+    // var_dump($this->data);
+    // echo "-->\n";
   }
 
   /**
