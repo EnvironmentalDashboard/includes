@@ -109,6 +109,9 @@ class Meter {
         }
       }
     }
+    if (count($buffer) > 0) {
+      $return[] = array('value' => (array_sum($buffer)/count($buffer)), 'recorded' => mktime(11, 0, 0, date('n', $recorded), date('j', $recorded), date('Y', $recorded)));
+    }
     return $return;
   }
 
