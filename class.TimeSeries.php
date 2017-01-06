@@ -44,11 +44,14 @@ class TimeSeries extends Meter {
     $this->baseload = PHP_INT_MAX;
     $this->peak = 0;
     $this->pad = 40; // Amount to pad sides of chart in pixels; set to 0 to turn off
-    // if (empty($this->data)) {
-    //   echo "Called with __construct(\$db, $meter_id, $start, $end, $min, $max, $alt_data);\n";
-    //   var_dump($this->data);
-    //   die('No data!');
-    // }
+    if (empty(array_filter($this->value))) {
+      echo "<!--\nCalled with __construct(\$db, $meter_id, $start, $end, $min, $max, $alt_data);\n";
+      var_dump($this->data);
+      echo "-->\n";
+      echo "<image xlink:href=\"images/error.svg\" x=\"400\" y=\"20\" height=\"200\" width=\"200\" /> ";
+      echo '<text x="50" y="275" font-weight="600" font-family="\'Roboto\',Helvetica,sans-serif" font-size="35">There are no data for this meter; please select another.</text></svg>';
+      exit();
+    }
     // echo "<!--";
     // echo "$meter_id $start $end";
     // var_dump($this->data);
