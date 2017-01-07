@@ -169,83 +169,55 @@ class BuildingOS {
   }
   
 }
-/*
-$bos = new BuildingOS($db);
-$buildings = $bos->getBuildings();
-foreach ($buildings as $building) {
-  $stmt = $db->prepare('INSERT INTO buildings (bos_id, name, building_type, address, loc, area, occupancy, floors, img, org_url) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)');
-  $stmt->execute(array(
-      $building['id'],
-      $building['name'],
-      $building['building_type'],
-      $building['address'],
-      $building['loc'],
-      $building['area'],
-      $building['occupancy'],
-      $building['numFloors'],
-      $building['image'],
-      $building['organization']
-    ));
-  $id = $db->lastInsertId();
-  foreach ($building['meters'] as $meter) {
-    $stmt = $db->prepare('INSERT INTO meters(bos_uuid, building_id, source, name, url) VALUES (?, ?, ?, ?, ?)');
-    $stmt->execute(array($meter['name'], $id, 'buildingos', $meter['displayName'], $meter['url']));
-    // $meter_json = json_decode($test->makeCall($meter['url']), true);
-    // $stmt = $db->prepare('INSERT INTO meters (bos_uuid, building_id, source, name, url, building_url, units) VALUES (?, ?, ?, ?, ?, ?, ?)');
-    // $stmt->execute(array(
-    //   $meter_json['data']['uuid'],
-    //   $last_id,
-    //   'buildingos',
-    //   $meter_json['data']['displayName'],
-    //   $meter_json['data']['url'],
-    //   $meter_json['data']['building'],
-    //   $meter_json['data']['displayUnits']['displayName']
-    // ));
-  }
-}
-//*/
-/*
-echo '<pre>';
-$test = new BuildingOS($db);
-$url = 'https://api.buildingos.com/buildings?per_page=100';
-while (true) {
-  $json = json_decode($test->makeCall($url), true);
-  foreach ($json['data'] as $building) {
-    $stmt = $db->prepare('INSERT INTO buildings (bos_id, name, building_type, address, loc, area, occupancy, floors, img, org_url) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)');
-    $stmt->execute(array(
-      $building['id'],
-      $building['name'],
-      $building['buildingType']['displayName'],
-      "{$building['address']} {$building['postalCode']}",
-      "{$building['location']['lat']},{$building['location']['lon']}",
-      (empty($building['area'])) ? '' : $building['area'],
-      $building['occupancy'],
-      $building['numFloors'],
-      $building['image'],
-      $building['organization']
-    ));
-    $last_id = $db->lastInsertId();
-    foreach ($building['meters'] as $meter) {
-      $meter_json = json_decode($test->makeCall($meter['url']), true);
-      $stmt = $db->prepare('INSERT INTO meters (bos_uuid, building_id, source, name, url, building_url, units) VALUES (?, ?, ?, ?, ?, ?, ?)');
-      $stmt->execute(array(
-        $meter_json['data']['uuid'],
-        $last_id,
-        'buildingos',
-        $meter_json['data']['displayName'],
-        $meter_json['data']['url'],
-        $meter_json['data']['building'],
-        $meter_json['data']['displayUnits']['displayName']
-      ));
-    }
-  }
-  if ($json['links']['next'] == "") { // No other data
-    break;
-  }
-  else { // Other data to fetch
-    $url = $json['links']['next'];
-  }
-}
+//*
+// echo '<pre>';
+// $test = new BuildingOS($db);
+// $url = 'https://api.buildingos.com/buildings?per_page=100';
+// while (true) {
+//   $json = json_decode($test->makeCall($url), true);
+//   foreach ($json['data'] as $building) {
+//     $area = (int) (empty($building['area'])) ? 0 : $building['area'];
+//     if ($db->query('SELECT COUNT(*) FROM buildings WHERE bos_id = \''.$building['id'].'\'')->fetch()['COUNT(*)'] > 0) {
+//       continue;
+//     }
+//     $stmt = $db->prepare('INSERT INTO buildings (bos_id, name, building_type, address, loc, area, occupancy, floors, img, org_url) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)');
+//     $stmt->execute(array(
+//       $building['id'],
+//       $building['name'],
+//       $building['buildingType']['displayName'],
+//       "{$building['address']} {$building['postalCode']}",
+//       "{$building['location']['lat']},{$building['location']['lon']}",
+//       $area,
+//       $building['occupancy'],
+//       $building['numFloors'],
+//       $building['image'],
+//       $building['organization']
+//     ));
+//     $last_id = $db->lastInsertId();
+//     foreach ($building['meters'] as $meter) {
+//       $meter_json = json_decode($test->makeCall($meter['url']), true);
+//       if ($db->query('SELECT COUNT(*) FROM meters WHERE bos_uuid = \''.$meter_json['data']['uuid'].'\'')->fetch()['COUNT(*)'] > 0) {
+//         continue;
+//       }
+//       $stmt = $db->prepare('INSERT INTO meters (bos_uuid, building_id, source, name, url, building_url, units) VALUES (?, ?, ?, ?, ?, ?, ?)');
+//       $stmt->execute(array(
+//         $meter_json['data']['uuid'],
+//         $last_id,
+//         'buildingos',
+//         $meter_json['data']['displayName'],
+//         $meter_json['data']['url'],
+//         $meter_json['data']['building'],
+//         $meter_json['data']['displayUnits']['displayName']
+//       ));
+//     }
+//   }
+//   if ($json['links']['next'] == "") { // No other data
+//     break;
+//   }
+//   else { // Other data to fetch
+//     $url = $json['links']['next'];
+//   }
+// }
 //*/
 // print_r(json_decode($test->makeCall('https://api.buildingos.com/meters/oberlin_allencroft_main_e/data'), true)); // doesnt work
 // print_r(json_decode($test->makeCall('https://api.buildingos.com/meters/oberlin_allencroft_main_e'), true)); //works

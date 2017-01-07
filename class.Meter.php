@@ -131,6 +131,21 @@ class Meter {
   }
 
   /**
+   * Fetches data using a meter UUID by fetching the id and calling getData()
+   *
+   * @param $uuid is the UUID of the meter
+   * @param $from is the unix timestamp for the starting period of the data
+   * @param $to is the unix timestamp for the ending period of the data
+   * @return Multidimensional array indexed with 'value' for the reading and 'recorded' for the time the reading was recorded
+   */
+  public function getDataByUUID($uuid, $from, $to, $res = null) {
+    $stmt = $this->db->prepare('SELECT id FROM meters WHERE bos_uuid = ? LIMIT 1');
+    $stmt->execute(array($uuid));
+    $meter_id = $stmt->fetch()['id'];
+    return $this->getData($meter_id, $from, $to, $res);
+  }
+
+  /**
    * Picks the resolution based on what is stored in the database
    * For Lucid data only as external CSV data might be stored in a different way
    * (in which case the last paramter of getData() should be used)
