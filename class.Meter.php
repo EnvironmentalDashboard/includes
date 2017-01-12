@@ -114,16 +114,11 @@ class Meter {
    * @return Multidimensional array indexed with 'value' for the reading and 'recorded' for the time the reading was recorded
    */
   public function getDataByMeterURL($meter_url, $from, $to, $res = null) {
-    if ($res === null) {
-      $res = $this->pickResolution($from);
-    }
-    $stmt = $this->db->prepare('SELECT value, recorded FROM meter_data
-      WHERE url = ? AND resolution = ? AND recorded > ? AND recorded < ?
-      ORDER BY recorded ASC');
-    $stmt->execute(array($meter_url, $res, $from, $to));
-    return $stmt->fetchAll();
+    $stmt = $this->db->prepare('SELECT id FROM meters WHERE url = ? LIMIT 1');
+    $stmt->execute(array($meter_url));
+    $meter_id = $stmt->fetch()['id'];
+    return $this->getData($meter_id, $from, $to, $res);
   }
-
   /**
    * Fetches data using a meter UUID by fetching the id and calling getData()
    *
@@ -133,14 +128,10 @@ class Meter {
    * @return Multidimensional array indexed with 'value' for the reading and 'recorded' for the time the reading was recorded
    */
   public function getDataByUUID($uuid, $from, $to, $res = null) {
-    if ($res === null) {
-      $res = $this->pickResolution($from);
-    }
-    $stmt = $this->db->prepare('SELECT value, recorded FROM meter_data
-      WHERE bos_uuid = ? AND resolution = ? AND recorded > ? AND recorded < ?
-      ORDER BY recorded ASC');
-    $stmt->execute(array($uuid, $res, $from, $to));
-    return $stmt->fetchAll();
+    $stmt = $this->db->prepare('SELECT id FROM meters WHERE bos_uuid = ? LIMIT 1');
+    $stmt->execute(array($uuid));
+    $meter_id = $stmt->fetch()['id'];
+    return $this->getData($meter_id, $from, $to, $res);
   }
 
   /**
