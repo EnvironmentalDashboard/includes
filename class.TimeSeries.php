@@ -49,7 +49,11 @@ class TimeSeries extends Meter {
       var_dump($this->data);
       echo "-->\n";
       echo "<image xlink:href=\"images/error.svg\" x=\"400\" y=\"20\" height=\"200\" width=\"200\" /> ";
-      echo '<text x="50" y="275" font-weight="600" font-family="\'Roboto\',Helvetica,sans-serif" font-size="35">There are no data for this meter; please select another.</text></svg>';
+      echo '<text x="50" y="275" font-weight="600" font-family="\'Roboto\',Helvetica,sans-serif" font-size="35">There are no data for this meter; please select another.</text>';
+      echo "\n<script type='text/javascript'>\n";
+      echo "// <![CDATA[;\n";
+      echo "setTimeout(function(){ window.location.reload(); }, 30000);\n";
+      echo "// ]]>\n</script></svg>";
       exit();
     }
     // echo "<!--";

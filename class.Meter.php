@@ -30,24 +30,31 @@ class Meter {
     $typical = array_filter($typical); // Remove null values
     array_push($typical, $current);
     sort($typical, SORT_NUMERIC);
-    $index = array_search($current, $typical);
+    $index = array_search($current, $typical) + 1;
     $relative_value = (($index) / count($typical)) * 100; // Get percent (0-100)
     return ($relative_value / 100) * ($max - $min) + $min; // Scale to $min and $max and return
   }
 
-  /**
-   * Fetches all data points for a given meter and resolution
-   *
-   * @param $meter_id is the id of the meter
-   * @param $res is the resolution to get data for ('quarterhour', 'hour', 'day')
-   * @return Multidimensional array indexed with 'value' for the reading and 'recorded' for the time the reading was recorded
-   */
-  public function getAllData($meter_id, $res) {
-    $stmt = $this->db->prepare('SELECT value, recorded FROM meter_data
-      WHERE meter_id = ? AND resolution = ?
-      ORDER BY recorded ASC');
-    $stmt->execute(array($meter_id, $res));
-    return $stmt->fetchAll();
+  public function relativeValueNow($meter_id, $grouping, $from, $to, $res = 'quarterhour', $min = 0, $max = 100) {
+    $sanitize = array_map('intval', $this->currentGrouping($grouping)); // map to intval to protect against SQL injection as we're concatenating this directly into the query
+    $implode = implode(',', $sanitize);
+    $stmt = $this->db->prepare(
+            'SELECT value FROM meter_data
+            WHERE meter_id = ? AND value IS NOT NULL
+            AND recorded > ? AND recorded < ? AND resolution = ?
+            AND HOUR(FROM_UNIXTIME(recorded)) = HOUR(NOW())
+            AND DAYOFWEEK(FROM_UNIXTIME(recorded)) IN ('.$implode.')
+            ORDER BY value ASC');
+    $stmt2 = $this->db->prepare('SELECT current FROM meters WHERE id = ?');
+    $stmt->execute(array($meter_id, $from, $to, $res));
+    $stmt2->execute(array($meter_id));
+    $current = floatval($stmt->fetchColumn());
+    $typical = array_map('floatval', array_column($stmt->fetchAll(), 'value'));
+    array_push($typical, $current);
+    sort($typical, SORT_NUMERIC);
+    $index = array_search($current, $typical) + 1;
+    $relative_value = (($index) / count($typical)) * 100; // Get percent (0-100)
+    return ($relative_value / 100) * ($max - $min) + $min; // Scale to $min and $max and return
   }
 
   /**
@@ -67,9 +74,72 @@ class Meter {
       WHERE meter_id = ? AND resolution = ? AND recorded > ? AND recorded < ?
       ORDER BY recorded ASC');
     $stmt->execute(array($meter_id, $res, $from, $to));
-    // echo "SELECT value, recorded FROM meter_data WHERE meter_id = $meter_id AND resolution = $res AND recorded > $from AND recorded < $to ORDER BY recorded ASC";
-    // var_dump($stmt->fetchAll());
-    // exit;
+    return $stmt->fetchAll();
+  }
+
+  /**
+   * @param  Int meter id
+   * @param  Int unix timestamp
+   * @param  int unix timestamp
+   * @param  String grouping
+   * @param  String res
+   * @return Array
+   */
+  public function getTypicalData($meter_id, $from, $to, $grouping, $res = null) {
+    $return = array();
+    if ($res === null) {
+      $res = $this->pickResolution($from);
+    }
+    foreach ($this->grouping($grouping) as $group) {
+      $implode = implode(',', $group);
+      $stmt = $this->db->prepare(
+            'SELECT value, recorded FROM meter_data
+            WHERE meter_id = ? AND value IS NOT NULL
+            AND recorded > ? AND recorded < ? AND resolution = ?
+            AND HOUR(FROM_UNIXTIME(recorded)) = HOUR(NOW())
+            AND DAYOFWEEK(FROM_UNIXTIME(recorded)) IN ('.$implode.')
+            ORDER BY value ASC');
+      $stmt->execute(array($meter_id, $from, $to, $res));
+      $return[$implode] = $stmt->fetchAll();
+    }
+    return $return;
+  }
+
+  /**
+   * Fetches data using a meter URL by fetching the URLs id and calling getData()
+   *
+   * @param $meter_url is the URL of the meter
+   * @param $from is the unix timestamp for the starting period of the data
+   * @param $to is the unix timestamp for the ending period of the data
+   * @return Multidimensional array indexed with 'value' for the reading and 'recorded' for the time the reading was recorded
+   */
+  public function getDataByMeterURL($meter_url, $from, $to, $res = null) {
+    if ($res === null) {
+      $res = $this->pickResolution($from);
+    }
+    $stmt = $this->db->prepare('SELECT value, recorded FROM meter_data
+      WHERE url = ? AND resolution = ? AND recorded > ? AND recorded < ?
+      ORDER BY recorded ASC');
+    $stmt->execute(array($meter_url, $res, $from, $to));
+    return $stmt->fetchAll();
+  }
+
+  /**
+   * Fetches data using a meter UUID by fetching the id and calling getData()
+   *
+   * @param $uuid is the UUID of the meter
+   * @param $from is the unix timestamp for the starting period of the data
+   * @param $to is the unix timestamp for the ending period of the data
+   * @return Multidimensional array indexed with 'value' for the reading and 'recorded' for the time the reading was recorded
+   */
+  public function getDataByUUID($uuid, $from, $to, $res = null) {
+    if ($res === null) {
+      $res = $this->pickResolution($from);
+    }
+    $stmt = $this->db->prepare('SELECT value, recorded FROM meter_data
+      WHERE bos_uuid = ? AND resolution = ? AND recorded > ? AND recorded < ?
+      ORDER BY recorded ASC');
+    $stmt->execute(array($uuid, $res, $from, $to));
     return $stmt->fetchAll();
   }
 
@@ -116,39 +186,40 @@ class Meter {
   }
 
   /**
-   * Fetches data using a meter URL by fetching the URLs id and calling getData()
-   *
-   * @param $meter_url is the URL of the meter
-   * @param $from is the unix timestamp for the starting period of the data
-   * @param $to is the unix timestamp for the ending period of the data
-   * @return Multidimensional array indexed with 'value' for the reading and 'recorded' for the time the reading was recorded
+   * @param  String grouping like [1,2,3,4,5,6,7]
+   * @return Array of days
    */
-  public function getDataByMeterURL($meter_url, $from, $to, $res = null) {
-    $stmt = $this->db->prepare('SELECT id FROM meters WHERE url = ? LIMIT 1');
-    $stmt->execute(array($meter_url));
-    $meter_id = $stmt->fetch()['id'];
-    return $this->getData($meter_id, $from, $to, $res);
+  private function currentGrouping($grouping) {
+    $day = date('w')+1;
+    while (strpos($grouping, '[') !== false) { // Could also be a ']'
+      preg_match('#\[(.*?)\]#', $grouping, $match);
+      $replace = str_replace(' ','', $match[1]);
+      $days = explode(',', $replace);
+      if (in_array($day, $days)) {
+        return $days;
+      }
+      $grouping = str_replace($match[0], '', $grouping);
+    }
   }
 
   /**
-   * Fetches data using a meter UUID by fetching the id and calling getData()
-   *
-   * @param $uuid is the UUID of the meter
-   * @param $from is the unix timestamp for the starting period of the data
-   * @param $to is the unix timestamp for the ending period of the data
-   * @return Multidimensional array indexed with 'value' for the reading and 'recorded' for the time the reading was recorded
+   * @param  String grouping like [1,2,3,4,5,6,7]
+   * @return Array of days
    */
-  public function getDataByUUID($uuid, $from, $to, $res = null) {
-    $stmt = $this->db->prepare('SELECT id FROM meters WHERE bos_uuid = ? LIMIT 1');
-    $stmt->execute(array($uuid));
-    $meter_id = $stmt->fetch()['id'];
-    return $this->getData($meter_id, $from, $to, $res);
+  private function grouping($grouping) {
+    $return = array();
+    while (strpos($grouping, '[') !== false) { // Could also be a ']'
+      preg_match('#\[(.*?)\]#', $grouping, $match);
+      $replace = str_replace(' ','', $match[1]);
+      $days = explode(',', $replace);
+      $return[] = $days;
+      $grouping = str_replace($match[0], '', $grouping);
+    }
+    return $return;
   }
 
   /**
    * Picks the resolution based on what is stored in the database
-   * For Lucid data only as external CSV data might be stored in a different way
-   * (in which case the last paramter of getData() should be used)
    *
    * @param $from How far back should the data go? (is a unix timestamp)
    * @return resolution string

@@ -15,6 +15,7 @@ class Gauge extends Meter {
 
   /**
    * Filters meter data arrays according to supplied parameters
+   * TO BE REMOVED FOR parseGrouping
    *
    * @param $arr 2D array to filter formatted with both 'recorded' and 'value' keys
    * @param $data_interval String like [1], [2, 3, 4, 5, 6], [7] to parse
@@ -64,9 +65,13 @@ class Gauge extends Meter {
     return $data;
   }
 
-  public function getRelativeValue($meter_id, $min = 0, $max = 100) {
+  /**
+   * Finds the relative value of a gauge given its id.
+   * Optionally scale the relative value between $min and $max
+   */
+  public function getRelativeValue($gauge_id, $min = 0, $max = 100) {
     $stmt = $this->db->prepare('SELECT meter_id, data_interval, start FROM gauges WHERE id = ?');
-    $stmt->execute(array($meter_id));
+    $stmt->execute(array($gauge_id));
     $result = $stmt->fetch();
     $meter_id = $result['meter_id'];
     $stmt = $this->db->prepare('SELECT current FROM meters WHERE id = ?');
