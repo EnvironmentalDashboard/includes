@@ -122,6 +122,19 @@ class TimeSeries extends Meter {
       $x += $increment;
     }
     echo "' />";
+    // After we've printed the chart, replace all the null values with the first previous non null value for charachter animation
+    $last_non_null = $this->value[0];
+    $i = 1;
+    while ($last_non_null === null) {
+      $last_non_null = $this->value[$i++];
+    }
+    for ($i = 0; $i < count($this->value); $i++) { // count($this->data) === count($this->value)
+      if ($this->value[$i] === null) {
+        $this->value[$i] = $last_non_null;
+      } else {
+        $last_non_null = $this->value[$i];
+      }
+    }
   }
 
   /**
@@ -265,6 +278,7 @@ class TimeSeries extends Meter {
     else if(abs($n)>=1000000000) return round(($n/1000000000),1).'B';
     else if(abs($n)>=1000000) return round(($n/1000000),1).'M';
     else if(abs($n)>=1000) return round(($n/1000),1).'k';
+    else if (abs($n) < 10) return number_format($n, 2);
     
     return number_format($n);
   }
