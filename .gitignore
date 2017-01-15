@@ -3,3 +3,4 @@ test*
 *.zip
 .DS_Store
 class.OpenWeatherMap.php
+class.Gauge.php

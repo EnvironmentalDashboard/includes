@@ -17,7 +17,7 @@ class TimeSeries extends Meter {
    * @param $end time series ends at this date
    * @param $min if not null, the graph will be scaled to this number rather than the datas min
    * @param $max if not null, the graph will be scaled to this number rather than the datas max
-   * @param $alt_data if not null, will be used instead of calling getData()
+   * @param $alt_data if not null, will be used instead of calling getDataFromTo()
   */
   public function __construct($db, $meter_id, $start, $end, $res = null, $min = null, $max = null, $alt_data = null) {
     parent::__construct($db);
@@ -25,7 +25,7 @@ class TimeSeries extends Meter {
       $this->data = ($alt_data === null) ? parent::getDailyData($meter_id, $start, $end) : $alt_data;
     }
     else {
-      $this->data = ($alt_data === null) ? parent::getData($meter_id, $start, $end, $res) : $alt_data;
+      $this->data = ($alt_data === null) ? parent::getDataFromTo($meter_id, $start, $end, $res) : $alt_data;
     }
     $this->fill = true;
     $this->dashed = true;
@@ -278,7 +278,7 @@ class TimeSeries extends Meter {
     else if(abs($n)>=1000000000) return round(($n/1000000000),1).'B';
     else if(abs($n)>=1000000) return round(($n/1000000),1).'M';
     else if(abs($n)>=1000) return round(($n/1000),1).'k';
-    else if (abs($n) < 10) return number_format($n, 2);
+    else if (abs($n) < 10 && $n !== 0) return number_format($n, 1);
     
     return number_format($n);
   }

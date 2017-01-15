@@ -68,6 +68,7 @@ class Gauge extends Meter {
   /**
    * Finds the relative value of a gauge given its id.
    * Optionally scale the relative value between $min and $max
+   * TO BE REMOVED
    */
   public function getRelativeValue($gauge_id, $min = 0, $max = 100) {
     $stmt = $this->db->prepare('SELECT meter_id, data_interval, start FROM gauges WHERE id = ?');
@@ -77,16 +78,12 @@ class Gauge extends Meter {
     $stmt = $this->db->prepare('SELECT current FROM meters WHERE id = ?');
     $stmt->execute(array($meter_id));
     $current_reading = $stmt->fetch()['current'];
-    $data = parent::getData($meter_id, strtotime($result['start']), time());
+    $data = parent::getDataFromTo($meter_id, strtotime($result['start']), time());
     $data = $this->filterArray($data, $result['data_interval']);
     return parent::relativeValue($data, $current_reading, $min, $max);
   }
 
-  public function lastUpdated($meter_id) {
-    $stmt = $this->db->prepare('SELECT last_updated FROM meters WHERE id = ?');
-    $stmt->execute(array($meter_id));
-    return $stmt->fetch()['last_updated'];
-  }
+  
 
 }
 ?>
