@@ -61,7 +61,7 @@ class Meter {
     $stmt2 = $this->db->prepare('SELECT current FROM meters WHERE id = ?');
     $stmt->execute(array($meter_id, $from, $to, $res));
     $stmt2->execute(array($meter_id));
-    $current = floatval($stmt->fetchColumn());
+    $current = floatval($stmt2->fetchColumn());
     $typical = array_map('floatval', array_column($stmt->fetchAll(), 'value'));
     return $this->relativeValue($typical, $current, $min, $max);
   }
@@ -88,7 +88,7 @@ class Meter {
     $stmt2 = $this->db->prepare('SELECT current FROM meters WHERE id = ?');
     $stmt->execute(array($meter_id, $res));
     $stmt2->execute(array($meter_id));
-    $current = floatval($stmt->fetchColumn());
+    $current = floatval($stmt2->fetchColumn());
     $typical = array_map('floatval', array_column($stmt->fetchAll(), 'value'));
     return $this->relativeValue($typical, $current, $min, $max);
   }
@@ -213,6 +213,10 @@ class Meter {
     return $this->getDataFromTo($meter_id, $from, $to, $res);
   }
 
+  /**
+   * [UUIDtoID description]
+   * @param [type] $uuid [description]
+   */
   public function UUIDtoID($uuid) {
     $stmt = $this->db->prepare('SELECT id FROM meters WHERE bos_uuid = ? LIMIT 1');
     $stmt->execute(array($uuid));
