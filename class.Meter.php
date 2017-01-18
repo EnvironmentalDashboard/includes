@@ -239,7 +239,7 @@ class Meter {
   public function getDailyData($meter_id, $from, $to) {
     $stmt = $this->db->prepare('SELECT value, recorded FROM meter_data
       WHERE meter_id = ? AND resolution = ? AND recorded > ? AND recorded < ?
-      ORDER BY recorded DESC');
+      ORDER BY recorded ASC');
     $stmt->execute(array($meter_id, 'hour', $from, $to));
     $return = array();
     $once = 0;
