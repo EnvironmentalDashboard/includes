@@ -37,7 +37,7 @@ class TimeSeries extends Meter {
     $this->units = null;
     $this->db = $db;
     $this->recorded = array_column($this->data, 'recorded');
-    $this->value = array_column($this->data, 'value');
+    $this->value = array_map('floatval', array_column($this->data, 'value'));
     $this->count = count($this->value);
     $this->max = null;
     $this->min = null;
@@ -89,7 +89,6 @@ class TimeSeries extends Meter {
           echo round($x, 1) . ',' . round($y, 1) . ' ';
           // echo "{$x},{$y} ";
         }
-        array_push($this->circlepoints, array($x, $y));
         $x += $increment;
         $last_point = $point;
       }
@@ -109,9 +108,7 @@ class TimeSeries extends Meter {
         $y = $this->convertRange(abs($point - $max), 0, $max - $min, 0, $height) + $offset;
         echo round($x, 1) . ',' . round($y, 1) . ' ';
         // echo "{$x},{$y} ";
-        if (!$this->fill) {
-          array_push($this->circlepoints, array($x, $y));
-        }
+        array_push($this->circlepoints, array($x, $y));
         if ($y > $this->peak) {
           $this->peak = $y;
         }

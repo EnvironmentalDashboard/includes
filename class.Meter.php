@@ -71,12 +71,12 @@ class Meter {
    * @param  [type]  $meter_id [description]
    * @param  [type]  $grouping [description]
    * @param  [type]  $npoints  [description]
-   * @param  string  $res      [description]
+   * @param  string  $res      Should not change from 'hour' unless you want to take multiple data points from the same hour
    * @param  integer $min      [description]
    * @param  integer $max      [description]
    * @return [type]            [description]
    */
-  public function relativeValueOfMeterWithPoints($meter_id, $grouping, $npoints, $res = 'quarterhour', $min = 0, $max = 100) {
+  public function relativeValueOfMeterWithPoints($meter_id, $grouping, $npoints, $res = 'hour', $min = 0, $max = 100) {
     $sanitize = array_map('intval', $this->currentGrouping($grouping)); // map to intval to protect against SQL injection as we're concatenating this directly into the query
     $implode = implode(',', $sanitize);
     $stmt = $this->db->prepare(
@@ -107,21 +107,25 @@ class Meter {
     }
     $stmt = $this->db->prepare('SELECT value, recorded FROM meter_data
       WHERE meter_id = ? AND resolution = ? AND recorded > ? AND recorded < ?
-      ORDER BY value ASC');
+      ORDER BY recorded ASC');
     $stmt->execute(array($meter_id, $res, $from, $to));
     return $stmt->fetchAll();
   }
 
   /**
    * Fetches data returning a specified number of records
-   * @param  string $value [description]
-   * @return [type]        [description]
+   * @param  [type] $meter_id [description]
+   * @param  [type] $limit    [description]
+   * @param  string $res      Should not change from 'hour' unless you want to take multiple data points from the same hour
+   * @return [type]           [description]
    */
-  public function getDataWithPoints($meter_id, $limit, $res = 'quarterhour') {
+  public function getDataWithPoints($meter_id, $limit, $res = 'hour') {
     $limit = intval($limit);
-    $stmt = $this->db->prepare('SELECT value, recorded FROM meter_data
+    $stmt = $this->db->prepare('SELECT * FROM (
+      SELECT value, recorded FROM meter_data
       WHERE meter_id = ? AND resolution = ?
-      ORDER BY recorded DESC LIMIT '.$limit);
+      ORDER BY recorded DESC LIMIT '.$limit.')
+      AS T1 ORDER BY recorded ASC');
     $stmt->execute(array($meter_id, $res));
     return $stmt->fetchAll();
   }
@@ -158,7 +162,7 @@ class Meter {
 
   /**
    * Fetches 'typical' data defined by the day groupings and the number of points to use.
-   * The resolution of the data can not be automatically chosen this way of getting the data so the resolution defaults to quarterhour
+   * The resolution of the data can not be automatically chosen this way of getting the data so the resolution defaults to hour
    * Note: Whether or not there is enough data in the database needs to checked before calling this function; all the available data will be returned for the given grouping, but it is not guaranteed you get the amount of data back that you ask for
    * @param  Int $meter_id
    * @param  Int $npoints Number of points to go back
@@ -166,7 +170,7 @@ class Meter {
    * @param  String $res
    * @return Array
    */
-  public function getTypicalDataWithPoints($meter_id, $npoints, $grouping, $res = 'quarterhour') {
+  public function getTypicalDataWithPoints($meter_id, $npoints, $grouping, $res = 'hour') {
     $return = array();
     $npoints = intval($npoints);
     foreach ($this->grouping($grouping) as $group) {
