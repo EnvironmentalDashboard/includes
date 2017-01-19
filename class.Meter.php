@@ -94,6 +94,17 @@ class Meter {
   }
 
   /**
+   * Gets the cached relative value. See ~/scripts/cron.php for more infoo
+   * @param  [type] $meter_id [description]
+   * @return [type]           [description]
+   */
+  public function relativeValueOfCachedMeter($meter_id) {
+    $stmt = $this->db->prepare('SELECT relative_value FROM meters WHERE meter_id = ?');
+    $stmt->execute(array($meter_id));
+    return $stmt->fetchColumn();
+  }
+
+  /**
    * Fetches data for a given range, determining the resolution by the amount of data requested.
    *
    * @param $meter_id is the id of the meter
