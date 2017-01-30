@@ -1,7 +1,4 @@
 <?php
-set_time_limit(0);
-ini_set('max_execution_time', 500);
-ini_set('max_execution_time', 0);
 date_default_timezone_set("America/New_York");
 require_once 'db.php';
 error_reporting(-1);
@@ -171,7 +168,7 @@ class BuildingOS {
 }
 //*
 // echo '<pre>';
-// $test = new BuildingOS($db);
+$test = new BuildingOS($db);
 // $url = 'https://api.buildingos.com/buildings?per_page=100';
 // while (true) {
 //   $json = json_decode($test->makeCall($url), true);

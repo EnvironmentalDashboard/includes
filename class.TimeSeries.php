@@ -27,6 +27,10 @@ class TimeSeries extends Meter {
     else {
       $this->data = ($alt_data === null) ? parent::getDataFromTo($meter_id, $start, $end, $res) : $alt_data;
     }
+    // Sometimes there's a 0 at the end of the data which causes the chart to look jank
+    if ($this->data[count($this->data)-1] == 0 && $this->data[count($this->data)-2] != 0) {
+      array_pop($this->data);
+    }
     $this->fill = true;
     $this->dashed = true;
     $this->meter_id = $meter_id;
@@ -49,7 +53,7 @@ class TimeSeries extends Meter {
       var_dump($this->data);
       echo "-->\n";
       echo "<image xlink:href=\"images/error.svg\" x=\"400\" y=\"20\" height=\"200\" width=\"200\" /> ";
-      echo '<text x="50" y="275" font-weight="600" font-family="\'Roboto\',Helvetica,sans-serif" font-size="35">There are no data for this meter; please select another.</text>';
+      echo "<text x='50' y='275' font-weight='600' font-family='Roboto,Helvetica,sans-serif' font-size='35'>There are no data for meter #{$meter_id}; please select another.</text>";
       echo "\n<script type='text/javascript'>\n";
       echo "// <![CDATA[;\n";
       echo "setTimeout(function(){ window.location.reload(); }, 30000);\n";

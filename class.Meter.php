@@ -94,7 +94,7 @@ class Meter {
   }
 
   /**
-   * Gets the cached relative value. See ~/scripts/cron.php for more infoo
+   * Gets the cached relative value. See ~/scripts/cron.php for more info
    * @param  [type] $meter_id [description]
    * @return [type]           [description]
    */
@@ -307,14 +307,14 @@ class Meter {
    * @param  String grouping like [1,2,3,4,5,6,7]
    * @return Array of days
    */
-  private function currentGrouping($grouping) {
+  public function currentGrouping($grouping) {
     $day = date('w')+1;
     while (strpos($grouping, '[') !== false) { // Could also be a ']'
       preg_match('#\[(.*?)\]#', $grouping, $match);
       $replace = str_replace(' ','', $match[1]);
       $days = explode(',', $replace);
       if (in_array($day, $days)) {
-        return $days;
+        return array_map('intval', $days);
       }
       $grouping = str_replace($match[0], '', $grouping);
     }
@@ -324,13 +324,13 @@ class Meter {
    * @param  String grouping like [1,2,3,4,5,6,7]
    * @return Array of days
    */
-  private function grouping($grouping) {
+  public function grouping($grouping) {
     $return = array();
     while (strpos($grouping, '[') !== false) { // Could also be a ']'
       preg_match('#\[(.*?)\]#', $grouping, $match);
       $replace = str_replace(' ','', $match[1]);
       $days = explode(',', $replace);
-      $return[] = $days;
+      $return[] = array_map('intval', $days);
       $grouping = str_replace($match[0], '', $grouping);
     }
     return $return;
