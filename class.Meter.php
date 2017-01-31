@@ -43,21 +43,25 @@ class Meter {
    * @param  string  $res      [description]
    * @param  integer $min      [description]
    * @param  integer $max      [description]
+   * @param string $meter_uuid If not null, will override $meter_id and use the $meter_uuid column for selecting a meter
    * @return Array
    */
-  public function relativeValueOfMeterFromTo($meter_id, $grouping, $from, $to, $res = null, $min = 0, $max = 100) {
+  public function relativeValueOfMeterFromTo($meter_id, $grouping, $from, $to, $res = null, $min = 0, $max = 100, $meter_uuid = null) {
+    if ($meter_uuid !== null) {
+      $meter_id = $this->UUIDtoID($meter_uuid);
+    }
     if ($res === null) {
       $res = $this->pickResolution($from);
     }
     $sanitize = array_map('intval', $this->currentGrouping($grouping)); // map to intval to protect against SQL injection as we're concatenating this directly into the query
     $implode = implode(',', $sanitize);
     $stmt = $this->db->prepare(
-            'SELECT value FROM meter_data
+            "SELECT value FROM meter_data
             WHERE meter_id = ? AND value IS NOT NULL
             AND recorded > ? AND recorded < ? AND resolution = ?
             AND HOUR(FROM_UNIXTIME(recorded)) = HOUR(NOW())
-            AND DAYOFWEEK(FROM_UNIXTIME(recorded)) IN ('.$implode.')
-            ORDER BY value ASC');
+            AND DAYOFWEEK(FROM_UNIXTIME(recorded)) IN ({$implode})
+            ORDER BY value ASC");
     $stmt2 = $this->db->prepare('SELECT current FROM meters WHERE id = ?');
     $stmt->execute(array($meter_id, $from, $to, $res));
     $stmt2->execute(array($meter_id));
@@ -74,17 +78,21 @@ class Meter {
    * @param  string  $res      Should not change from 'hour' unless you want to take multiple data points from the same hour
    * @param  integer $min      [description]
    * @param  integer $max      [description]
-   * @return [type]            [description]
+   * @param string $meter_uuid If not null, will override $meter_id and use the $meter_uuid column for selecting a meter
+   * @return Array
    */
-  public function relativeValueOfMeterWithPoints($meter_id, $grouping, $npoints, $res = 'hour', $min = 0, $max = 100) {
+  public function relativeValueOfMeterWithPoints($meter_id, $grouping, $npoints, $res = 'hour', $min = 0, $max = 100, $meter_uuid = null) {
+    if ($meter_uuid !== null) {
+      $meter_id = $this->UUIDtoID($meter_uuid);
+    }
     $sanitize = array_map('intval', $this->currentGrouping($grouping)); // map to intval to protect against SQL injection as we're concatenating this directly into the query
     $implode = implode(',', $sanitize);
     $stmt = $this->db->prepare(
-            'SELECT value FROM meter_data
+            "SELECT value FROM meter_data
             WHERE meter_id = ? AND value IS NOT NULL AND resolution = ?
             AND HOUR(FROM_UNIXTIME(recorded)) = HOUR(NOW())
-            AND DAYOFWEEK(FROM_UNIXTIME(recorded)) IN ('.$implode.')
-            ORDER BY recorded DESC LIMIT ' . intval($npoints));
+            AND DAYOFWEEK(FROM_UNIXTIME(recorded)) IN ({$implode})
+            ORDER BY recorded DESC LIMIT " . intval($npoints));
     $stmt2 = $this->db->prepare('SELECT current FROM meters WHERE id = ?');
     $stmt->execute(array($meter_id, $res));
     $stmt2->execute(array($meter_id));
@@ -235,8 +243,7 @@ class Meter {
   public function UUIDtoID($uuid) {
     $stmt = $this->db->prepare('SELECT id FROM meters WHERE bos_uuid = ? LIMIT 1');
     $stmt->execute(array($uuid));
-    $meter_id = $stmt->fetch()['id'];
-    return $this->getDataFromTo($meter_id, $from, $to, $res);
+    return $stmt->fetchColumn();
   }
 
   /**
