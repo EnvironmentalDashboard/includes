@@ -134,9 +134,10 @@ class Meter {
             ORDER BY recorded DESC LIMIT " . $amount); // ORDER BY recorded DESC is needed because we're trying to extract the most recent $amount points
           $stmt->execute(array($meter_id, 'hour'));
           $typical = array_map('floatval', array_column($stmt->fetchAll(), 'value'));
-          var_dump($typical);
-          var_dump($current);
+          echo "Typical: "; var_dump($typical);
+          echo "\nCurrent: {$current}\n";
           $relative_value = $this->relativeValue($typical, $current);
+          echo "relative_value: {$relative_value}\n";
         } else if (array_key_exists('start', $group)) {
           $amount = intval($group['start']);
           $days = implode(',', array_map('intval', $group['days']));
@@ -149,9 +150,10 @@ class Meter {
             ORDER BY value ASC"); // ORDER BY value ASC is efficient here because the relativeValue() method will sort the data like this (and there's no need to sort by recorded -- the amount of data is determined by $amount, which is a unix timestamp representing when the data should start)
           $stmt->execute(array($meter_id, $amount, time(), 'hour'));
           $typical = array_map('floatval', array_column($stmt->fetchAll(), 'value'));
-          var_dump($typical);
-          var_dump($current);
+          echo "Typical: "; var_dump($typical);
+          echo "Current: {$current}\n";
           $relative_value = $this->relativeValue($typical, $current);
+          echo "relative_value: {$relative_value}\n";
         }
         $stmt = $this->db->prepare('UPDATE relative_values SET relative_value = ? WHERE id = ?');
         $stmt->execute(array(round($relative_value), $rv_id));
