@@ -103,13 +103,61 @@ class Meter {
 
   /**
    * Gets the cached relative value. See ~/scripts/cron.php for more info
-   * @param  [type] $meter_id [description]
+   * @param  [type] $meter_uuid [description]
    * @return [type]           [description]
    */
-  public function relativeValueOfCachedMeter($meter_id) {
-    $stmt = $this->db->prepare('SELECT relative_value FROM meters WHERE meter_id = ?');
-    $stmt->execute(array($meter_id));
+  public function relativeValueOfCachedMeter($meter_uuid) {
+    $stmt = $this->db->prepare('SELECT relative_value FROM relative_values WHERE meter_uuid = ? LIMIT 1');
+    $stmt->execute(array($meter_uuid));
     return $stmt->fetchColumn();
+  }
+
+  /**
+   * Updates a row in the relative_values table
+   * @param  $meter_id
+   * @param  $grouping Example JSON: [{"days":[1,2,3,4,5],"npoints":8},{"days":[1,7],"npoints":5}]
+   * @param  $rv_id
+   * @param  $current
+   */
+  public function updateRelativeValueOfMeter($meter_id, $grouping, $rv_id, $current) {
+    $day_of_week = date('w') + 1; // https://dev.mysql.com/doc/refman/5.5/en/date-and-time-functions.html#function_dayofweek
+    foreach (json_decode($grouping, true) as $group) {
+      if (in_array($day_of_week, $group['days'])) {
+        if (array_key_exists('npoints', $group)) {
+          $amount = intval($group['npoints']);
+          $days = implode(',', array_map('intval', $group['days'])); // prevent sql injection with intval as we're concatenating directly into query
+          $stmt = $this->db->prepare(
+            "SELECT value FROM meter_data
+            WHERE meter_id = ? AND value IS NOT NULL AND resolution = ?
+            AND HOUR(FROM_UNIXTIME(recorded)) = HOUR(NOW())
+            AND DAYOFWEEK(FROM_UNIXTIME(recorded)) IN ({$days})
+            ORDER BY recorded DESC LIMIT " . $amount); // ORDER BY recorded DESC is needed because we're trying to extract the most recent $amount points
+          $stmt->execute(array($meter_id, 'hour'));
+          $typical = array_map('floatval', array_column($stmt->fetchAll(), 'value'));
+          var_dump($typical);
+          var_dump($current);
+          $relative_value = $this->relativeValue($typical, $current);
+        } else if (array_key_exists('start', $group)) {
+          $amount = intval($group['start']);
+          $days = implode(',', array_map('intval', $group['days']));
+          $stmt = $this->db->prepare(
+            "SELECT value, recorded FROM meter_data
+            WHERE meter_id = ? AND value IS NOT NULL
+            AND recorded > ? AND recorded < ? AND resolution = ?
+            AND HOUR(FROM_UNIXTIME(recorded)) = HOUR(NOW())
+            AND DAYOFWEEK(FROM_UNIXTIME(recorded)) IN ({$days})
+            ORDER BY value ASC"); // ORDER BY value ASC is efficient here because the relativeValue() method will sort the data like this (and there's no need to sort by recorded -- the amount of data is determined by $amount, which is a unix timestamp representing when the data should start)
+          $stmt->execute(array($meter_id, $amount, time(), 'hour'));
+          $typical = array_map('floatval', array_column($stmt->fetchAll(), 'value'));
+          var_dump($typical);
+          var_dump($current);
+          $relative_value = $this->relativeValue($typical, $current);
+        }
+        $stmt = $this->db->prepare('UPDATE relative_values SET relative_value = ? WHERE id = ?');
+        $stmt->execute(array(round($relative_value), $rv_id));
+        break;
+      }
+    }
   }
 
   /**

@@ -27,9 +27,11 @@ class TimeSeries extends Meter {
     else {
       $this->data = ($alt_data === null) ? parent::getDataFromTo($meter_id, $start, $end, $res) : $alt_data;
     }
-    // Sometimes there's a 0 at the end of the data which causes the chart to look jank
-    if ($this->data[count($this->data)-1] == 0 && $this->data[count($this->data)-2] != 0) {
-      array_pop($this->data);
+    // PHP doesnt care about types but when printing array with json_encode() strings are printed
+    for ($i = 0; $i < count($this->data); $i++) { 
+      if ($this->data[$i]['value'] !== null) {
+        $this->data[$i]['value'] = floatval($this->data[$i]['value']);
+      }
     }
     $this->fill = true;
     $this->dashed = true;
@@ -41,7 +43,7 @@ class TimeSeries extends Meter {
     $this->units = null;
     $this->db = $db;
     $this->recorded = array_column($this->data, 'recorded');
-    $this->value = array_map('floatval', array_column($this->data, 'value'));
+    $this->value = array_column($this->data, 'value');
     $this->count = count($this->value);
     $this->max = null;
     $this->min = null;
