@@ -106,10 +106,26 @@ class Meter {
    * @param  [type] $meter_uuid [description]
    * @return [type]           [description]
    */
-  public function relativeValueOfCachedMeter($meter_uuid) {
-    $stmt = $this->db->prepare('SELECT relative_value FROM relative_values WHERE meter_uuid = ? LIMIT 1');
-    $stmt->execute(array($meter_uuid));
-    return $stmt->fetchColumn();
+  public function relativeValueOfCachedMeter($meter_uuid, $perm = null, $min = 0, $max = 100) {
+    if ($perm === null) {
+      $stmt = $this->db->prepare('SELECT relative_value FROM relative_values WHERE meter_uuid = ? LIMIT 1');
+      $stmt->execute(array($meter_uuid));
+    } else {
+      $stmt = $this->db->prepare('SELECT relative_value FROM relative_values WHERE meter_uuid = ? AND permission = ? LIMIT 1');
+      $stmt->execute(array($meter_uuid, $perm));
+    }
+    return ($stmt->fetchColumn() / 100) * ($max - $min) + $min;
+  }
+
+  /**
+   * Gets the cached relative value. See ~/scripts/cron.php for more info
+   * @param  [type] $meter_id [description]
+   * @return [type]           [description]
+   */
+  public function relativeValueOfCachedMeterById($meter_id, $min = 0, $max = 100) {
+    $stmt = $this->db->prepare('SELECT relative_value FROM relative_values WHERE meter_uuid IN (SELECT bos_uuid FROM meters WHERE id = ?) LIMIT 1');
+    $stmt->execute(array($meter_id));
+    return ($stmt->fetchColumn() / 100) * ($max - $min) + $min;
   }
 
   /**
@@ -139,7 +155,10 @@ class Meter {
           $relative_value = $this->relativeValue($typical, $current);
           echo "relative_value: {$relative_value}\n";
         } else if (array_key_exists('start', $group)) {
-          $amount = intval($group['start']);
+          $amount = strtotime($group['start']);
+          if ($amount === false) {
+            return;
+          }
           $days = implode(',', array_map('intval', $group['days']));
           $stmt = $this->db->prepare(
             "SELECT value, recorded FROM meter_data
