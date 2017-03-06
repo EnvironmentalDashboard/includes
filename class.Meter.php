@@ -35,73 +35,6 @@ class Meter {
   }
 
   /**
-   * Returns the relative value of a meters data
-   * @param  [type]  $meter_id [description]
-   * @param  [type]  $grouping [description]
-   * @param  [type]  $from     [description]
-   * @param  [type]  $to       [description]
-   * @param  string  $res      [description]
-   * @param  integer $min      [description]
-   * @param  integer $max      [description]
-   * @param string $meter_uuid If not null, will override $meter_id and use the $meter_uuid column for selecting a meter
-   * @return Array
-   */
-  public function relativeValueOfMeterFromTo($meter_id, $grouping, $from, $to, $res = null, $min = 0, $max = 100, $meter_uuid = null) {
-    if ($meter_uuid !== null) {
-      $meter_id = $this->UUIDtoID($meter_uuid);
-    }
-    if ($res === null) {
-      $res = $this->pickResolution($from);
-    }
-    $sanitize = array_map('intval', $this->currentGrouping($grouping)); // map to intval to protect against SQL injection as we're concatenating this directly into the query
-    $implode = implode(',', $sanitize);
-    $stmt = $this->db->prepare(
-            "SELECT value FROM meter_data
-            WHERE meter_id = ? AND value IS NOT NULL
-            AND recorded > ? AND recorded < ? AND resolution = ?
-            AND HOUR(FROM_UNIXTIME(recorded)) = HOUR(NOW())
-            AND DAYOFWEEK(FROM_UNIXTIME(recorded)) IN ({$implode})
-            ORDER BY value ASC");
-    $stmt2 = $this->db->prepare('SELECT current FROM meters WHERE id = ?');
-    $stmt->execute(array($meter_id, $from, $to, $res));
-    $stmt2->execute(array($meter_id));
-    $current = floatval($stmt2->fetchColumn());
-    $typical = array_map('floatval', array_column($stmt->fetchAll(), 'value'));
-    return $this->relativeValue($typical, $current, $min, $max);
-  }
-
-  /**
-   * Returns the relative value of a meters data
-   * @param  [type]  $meter_id [description]
-   * @param  [type]  $grouping [description]
-   * @param  [type]  $npoints  [description]
-   * @param  string  $res      Should not change from 'hour' unless you want to take multiple data points from the same hour
-   * @param  integer $min      [description]
-   * @param  integer $max      [description]
-   * @param string $meter_uuid If not null, will override $meter_id and use the $meter_uuid column for selecting a meter
-   * @return Array
-   */
-  public function relativeValueOfMeterWithPoints($meter_id, $grouping, $npoints, $res = 'hour', $min = 0, $max = 100, $meter_uuid = null) {
-    if ($meter_uuid !== null) {
-      $meter_id = $this->UUIDtoID($meter_uuid);
-    }
-    $sanitize = array_map('intval', $this->currentGrouping($grouping)); // map to intval to protect against SQL injection as we're concatenating this directly into the query
-    $implode = implode(',', $sanitize);
-    $stmt = $this->db->prepare(
-            "SELECT value FROM meter_data
-            WHERE meter_id = ? AND value IS NOT NULL AND resolution = ?
-            AND HOUR(FROM_UNIXTIME(recorded)) = HOUR(NOW())
-            AND DAYOFWEEK(FROM_UNIXTIME(recorded)) IN ({$implode})
-            ORDER BY recorded DESC LIMIT " . intval($npoints));
-    $stmt2 = $this->db->prepare('SELECT current FROM meters WHERE id = ?');
-    $stmt->execute(array($meter_id, $res));
-    $stmt2->execute(array($meter_id));
-    $current = floatval($stmt2->fetchColumn());
-    $typical = array_map('floatval', array_column($stmt->fetchAll(), 'value'));
-    return $this->relativeValue($typical, $current, $min, $max);
-  }
-
-  /**
    * Gets the cached relative value. See ~/scripts/cron.php for more info
    * @param  [type] $meter_uuid [description]
    * @return [type]           [description]
@@ -131,7 +64,7 @@ class Meter {
   /**
    * Updates a row in the relative_values table
    * @param  $meter_id
-   * @param  $grouping Example JSON: [{"days":[1,2,3,4,5],"npoints":8},{"days":[1,7],"npoints":5}]
+   * @param  $grouping Example JSON: [{"days":[1,2,3,4,5],"npoints":8},{"days":[1,7],"start":"-2 weeks"}]
    * @param  $rv_id
    * @param  $current
    */
@@ -216,64 +149,6 @@ class Meter {
       AS T1 ORDER BY recorded ASC');
     $stmt->execute(array($meter_id, $res));
     return $stmt->fetchAll();
-  }
-
-  /**
-   * Fetches 'typical' data defined by the day groupings (e.g. [1,7],[2,3,4,5,6]) and a start and stop time
-   * 
-   * @param  Int meter id
-   * @param  Int unix timestamp
-   * @param  int unix timestamp
-   * @param  String grouping
-   * @param  String res Resoultion of data but not required
-   * @return Array
-   */
-  public function getTypicalDataFromTo($meter_id, $from, $to, $grouping, $res = null) {
-    $return = array();
-    if ($res === null) {
-      $res = $this->pickResolution($from);
-    }
-    foreach ($this->grouping($grouping) as $group) {
-      $implode = implode(',', $group);
-      $stmt = $this->db->prepare(
-            'SELECT value, recorded FROM meter_data
-            WHERE meter_id = ? AND value IS NOT NULL
-            AND recorded > ? AND recorded < ? AND resolution = ?
-            AND HOUR(FROM_UNIXTIME(recorded)) = HOUR(NOW())
-            AND DAYOFWEEK(FROM_UNIXTIME(recorded)) IN ('.$implode.')
-            ORDER BY value ASC');
-      $stmt->execute(array($meter_id, $from, $to, $res));
-      $return[$implode] = $stmt->fetchAll();
-    }
-    return $return;
-  }
-
-  /**
-   * Fetches 'typical' data defined by the day groupings and the number of points to use.
-   * The resolution of the data can not be automatically chosen this way of getting the data so the resolution defaults to hour
-   * Note: Whether or not there is enough data in the database needs to checked before calling this function; all the available data will be returned for the given grouping, but it is not guaranteed you get the amount of data back that you ask for
-   * @param  Int $meter_id
-   * @param  Int $npoints Number of points to go back
-   * @param  String $grouping
-   * @param  String $res
-   * @return Array
-   */
-  public function getTypicalDataWithPoints($meter_id, $npoints, $grouping, $res = 'hour') {
-    $return = array();
-    $npoints = intval($npoints);
-    foreach ($this->grouping($grouping) as $group) {
-      $implode = implode(',', $group);
-      $stmt = $this->db->prepare(
-            'SELECT value, recorded FROM meter_data
-            WHERE meter_id = ? AND value IS NOT NULL
-            AND recorded > ? AND recorded < ? AND resolution = ?
-            AND HOUR(FROM_UNIXTIME(recorded)) = HOUR(NOW())
-            AND DAYOFWEEK(FROM_UNIXTIME(recorded)) IN ('.$implode.')
-            ORDER BY recorded DESC LIMIT ' . $npoints);
-      $stmt->execute(array($meter_id, $res));
-      $return[$implode] = $stmt->fetchAll();
-    }
-    return $return;
   }
 
   /**
@@ -377,39 +252,6 @@ class Meter {
     $stmt->execute(array($meter_id));
     $result = $stmt->fetch();
     return $result['units'];
-  }
-
-  /**
-   * @param  String grouping like [1,2,3,4,5,6,7]
-   * @return Array of days
-   */
-  public function currentGrouping($grouping) {
-    $day = date('w')+1;
-    while (strpos($grouping, '[') !== false) { // Could also be a ']'
-      preg_match('#\[(.*?)\]#', $grouping, $match);
-      $replace = str_replace(' ','', $match[1]);
-      $days = explode(',', $replace);
-      if (in_array($day, $days)) {
-        return array_map('intval', $days);
-      }
-      $grouping = str_replace($match[0], '', $grouping);
-    }
-  }
-
-  /**
-   * @param  String grouping like [1,2,3,4,5,6,7]
-   * @return Array of days
-   */
-  public function grouping($grouping) {
-    $return = array();
-    while (strpos($grouping, '[') !== false) { // Could also be a ']'
-      preg_match('#\[(.*?)\]#', $grouping, $match);
-      $replace = str_replace(' ','', $match[1]);
-      $days = explode(',', $replace);
-      $return[] = array_map('intval', $days);
-      $grouping = str_replace($match[0], '', $grouping);
-    }
-    return $return;
   }
 
   /**

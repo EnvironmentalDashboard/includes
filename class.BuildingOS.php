@@ -168,11 +168,14 @@ class BuildingOS {
 }
 //*
 // echo '<pre>';
-$test = new BuildingOS($db);
+// $test = new BuildingOS($db);
 // $url = 'https://api.buildingos.com/buildings?per_page=100';
 // while (true) {
 //   $json = json_decode($test->makeCall($url), true);
 //   foreach ($json['data'] as $building) {
+//     if ($building['organization'] !== 'https://api.buildingos.com/organizations/1249') {
+//       continue;
+//     }
 //     $area = (int) (empty($building['area'])) ? 0 : $building['area'];
 //     if ($db->query('SELECT COUNT(*) FROM buildings WHERE bos_id = \''.$building['id'].'\'')->fetch()['COUNT(*)'] > 0) {
 //       continue;

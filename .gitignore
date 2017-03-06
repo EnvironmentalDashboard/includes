@@ -3,4 +3,4 @@ test*
 *.zip
 .DS_Store
 class.OpenWeatherMap.php
-class.Gauge.php
+old_rv_methods
