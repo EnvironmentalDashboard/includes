@@ -12,18 +12,19 @@ class BuildingOS {
 
   /**
    * @param $db The database connection
+   * @param $api_id ID of the API record to use
    *
    * Sets the token for the class.
    */
-  public function __construct($db) {
+  public function __construct($db, $api_id = 1) {
     $this->db = $db;
-    $results = $db->query('SELECT token, token_updated FROM api LIMIT 1');
+    $results = $db->query("SELECT token, token_updated FROM api WHERE id = {$api_id}");
     $arr = $results->fetch();
     if ($arr['token_updated'] + 3595 > time()) { // 3595 = 1 hour - 5 seconds to be safe (according to API docs, token expires after 1 hour)
       $this->token = $arr['token'];
     }
     else { // amortized cost
-      $results2 = $db->query('SELECT client_id, client_secret, username, password FROM api LIMIT 1');
+      $results2 = $db->query("SELECT client_id, client_secret, username, password FROM api WHERE id = {$api_id}");
       $arr2 = $results2->fetch();
       $url = 'https://api.buildingos.com/o/token/';
       $data = array(
@@ -47,8 +48,8 @@ class BuildingOS {
       }
       $json = json_decode($result, true);
       $this->token = $json['access_token'];
-      $stmt = $db->prepare('UPDATE api SET token = ?, token_updated = ?');
-      $stmt->execute(array($this->token, time()));
+      $stmt = $db->prepare('UPDATE api SET token = ?, token_updated = ? WHERE id = ?');
+      $stmt->execute(array($this->token, time(), $api_id));
     }
   }
 
