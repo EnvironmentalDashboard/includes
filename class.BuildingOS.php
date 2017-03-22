@@ -169,7 +169,7 @@ class BuildingOS {
 }
 //*
 // echo '<pre>';
-// $test = new BuildingOS($db);
+// $test = new BuildingOS($db, 3);
 // $url = 'https://api.buildingos.com/buildings?per_page=100';
 // while (true) {
 //   $json = json_decode($test->makeCall($url), true);
@@ -181,7 +181,7 @@ class BuildingOS {
 //     if ($db->query('SELECT COUNT(*) FROM buildings WHERE bos_id = \''.$building['id'].'\'')->fetch()['COUNT(*)'] > 0) {
 //       continue;
 //     }
-//     $stmt = $db->prepare('INSERT INTO buildings (bos_id, name, building_type, address, loc, area, occupancy, floors, img, org_url) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)');
+//     $stmt = $db->prepare('INSERT INTO buildings (bos_id, name, building_type, address, loc, area, occupancy, floors, img, org_url, user_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)');
 //     $stmt->execute(array(
 //       $building['id'],
 //       $building['name'],
@@ -192,7 +192,8 @@ class BuildingOS {
 //       $building['occupancy'],
 //       $building['numFloors'],
 //       $building['image'],
-//       $building['organization']
+//       $building['organization'],
+//       3
 //     ));
 //     $last_id = $db->lastInsertId();
 //     foreach ($building['meters'] as $meter) {
@@ -200,7 +201,7 @@ class BuildingOS {
 //       if ($db->query('SELECT COUNT(*) FROM meters WHERE bos_uuid = \''.$meter_json['data']['uuid'].'\'')->fetch()['COUNT(*)'] > 0) {
 //         continue;
 //       }
-//       $stmt = $db->prepare('INSERT INTO meters (bos_uuid, building_id, source, name, url, building_url, units) VALUES (?, ?, ?, ?, ?, ?, ?)');
+//       $stmt = $db->prepare('INSERT INTO meters (bos_uuid, building_id, source, name, url, building_url, units, user_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)');
 //       $stmt->execute(array(
 //         $meter_json['data']['uuid'],
 //         $last_id,
@@ -208,7 +209,8 @@ class BuildingOS {
 //         $meter_json['data']['displayName'],
 //         $meter_json['data']['url'],
 //         $meter_json['data']['building'],
-//         $meter_json['data']['displayUnits']['displayName']
+//         $meter_json['data']['displayUnits']['displayName'],
+//         3
 //       ));
 //     }
 //   }

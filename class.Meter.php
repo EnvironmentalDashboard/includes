@@ -17,6 +17,16 @@ class Meter {
   }
 
   /**
+   * Scale a percent (value which is 0-100) to a new min and max
+   * @param  $pct value to scale
+   * @param  $min new min of range
+   * @param  $max new max of range
+   */
+  public function scale($pct, $min, $max) {
+    return ($pct / 100) * ($max - $min) + $min;
+  }
+
+  /**
    * Defines what 'relative value' is
    * Note: null values should be removed from $typical array beforehand as they will be interpreted as '0' which is not necessarily right
    *
@@ -31,7 +41,7 @@ class Meter {
     sort($typical, SORT_NUMERIC);
     $index = array_search($current, $typical) + 1;
     $relative_value = (($index) / count($typical)) * 100; // Get percent (0-100)
-    return ($relative_value / 100) * ($max - $min) + $min; // Scale to $min and $max and return
+    return $this->scale($relative_value, $min, $max); // Scale to $min and $max and return
   }
 
   /**
