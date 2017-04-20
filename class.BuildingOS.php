@@ -165,6 +165,66 @@ class BuildingOS {
       }
     }
   }
+
+  /**
+   * Fill the db with buildings and meters
+   * @param $user_id is the user_id to be associated with the buildings/meters this function retrieves
+   * @param $org is the organization URL to restrict the collected buildings/meters to
+   */
+  public function populate_db($user_id, $org = null) {
+    $url = 'https://api.buildingos.com/buildings?per_page=100';
+    while (true) {
+      $json = json_decode($this->makeCall($url), true);
+      foreach ($json['data'] as $building) {
+        // example $org = 'https://api.buildingos.com/organizations/1249'
+        if ($org !== null && $building['organization'] !== $org) {
+          continue;
+        }
+        $area = (int) (empty($building['area'])) ? 0 : $building['area'];
+        if ($this->db->query('SELECT COUNT(*) FROM buildings WHERE bos_id = \''.$building['id'].'\'')->fetch()['COUNT(*)'] > 0) {
+          continue;
+        }
+        $stmt = $this->db->prepare('INSERT INTO buildings (bos_id, name, building_type, address, loc, area, occupancy, floors, img, org_url, user_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)');
+        $stmt->execute(array(
+          $building['id'],
+          $building['name'],
+          $building['buildingType']['displayName'],
+          "{$building['address']} {$building['postalCode']}",
+          "{$building['location']['lat']},{$building['location']['lon']}",
+          $area,
+          $building['occupancy'],
+          $building['numFloors'],
+          $building['image'],
+          $building['organization'],
+          $user_id
+        ));
+        $last_id = $this->db->lastInsertId();
+        foreach ($building['meters'] as $meter) {
+          $meter_json = json_decode($this->makeCall($meter['url']), true);
+          if ($this->db->query('SELECT COUNT(*) FROM meters WHERE bos_uuid = \''.$meter_json['data']['uuid'].'\'')->fetch()['COUNT(*)'] > 0) {
+            continue;
+          }
+          $stmt = $this->db->prepare('INSERT INTO meters (bos_uuid, building_id, source, name, url, building_url, units, user_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)');
+          $stmt->execute(array(
+            $meter_json['data']['uuid'],
+            $last_id,
+            'buildingos',
+            $meter_json['data']['displayName'],
+            $meter_json['data']['url'],
+            $meter_json['data']['building'],
+            $meter_json['data']['displayUnits']['displayName'],
+            $user_id
+          ));
+        }
+      }
+      if ($json['links']['next'] == "") { // No other data
+        break;
+      }
+      else { // Other data to fetch
+        $url = $json['links']['next'];
+      }
+    }
+  }
   
 }
 //*

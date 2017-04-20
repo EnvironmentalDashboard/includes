@@ -78,7 +78,11 @@ class Meter {
    * @param  $rv_id
    * @param  $current
    */
-  public function updateRelativeValueOfMeter($meter_id, $grouping, $rv_id, $current) {
+  public function updateRelativeValueOfMeter($meter_id, $grouping, $rv_id, $current = null) {
+    if ($current === null) {
+      $stmt = $this->db->prepare('SELECT current FROM meters WHERE id = ?');
+      $current = $stmt->fetchColumn();
+    }
     $day_of_week = date('w') + 1; // https://dev.mysql.com/doc/refman/5.5/en/date-and-time-functions.html#function_dayofweek
     foreach (json_decode($grouping, true) as $group) {
       if (in_array($day_of_week, $group['days'])) {
