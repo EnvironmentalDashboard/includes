@@ -3,7 +3,7 @@ date_default_timezone_set("America/New_York");
 /**
  * For retrieving meter data from the database
  *
- * @author Tim Robert-Fitzgerald June 2016
+ * @author Tim Robert-Fitzgerald
  */
 class Meter {
 
