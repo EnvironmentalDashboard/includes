@@ -174,7 +174,7 @@ class BuildingOS {
    * Fill the db with buildings and meters
    * @param $org is the organization URL to restrict the collected buildings/meters to
    */
-  public function populate_db($org = null) {
+  public function populateDB($org = null) {
     $url = 'https://api.buildingos.com/buildings?per_page=100';
     while (true) {
       $json = json_decode($this->makeCall($url), true);
@@ -229,42 +229,76 @@ class BuildingOS {
     }
   }
 
+  public function pickAmount($res) {
+    switch ($res) {
+      case 'live':
+        return strtotime('-2 hours');
+        break;
+      case 'quarterhour':
+        return strtotime('-2 weeks');
+        break;
+      case 'hour':
+        return strtotime('-2 months');
+        break;
+      case 'month':
+        return strtotime('-2 years');
+        break;
+      default:
+        return null;
+        break;
+    }
+  }
+
+  public function pickCol($res) {
+    switch ($res) {
+      case 'live':
+        return 'live_last_updated';
+        break;
+      case 'quarterhour':
+        return 'quarterhour_last_updated';
+        break;
+      case 'hour':
+        return 'hour_last_updated';
+        break;
+      case 'month':
+        return 'month_last_updated';
+        break;
+      default:
+        return null;
+        break;
+    }
+  }
+
   /**
-   * Similiar to the cron() function below, but only updates a specific meter given a res and amount
+   * Used by daemons to update individual meters
+   * 
    */
-  public function update_meter($meter_id, $res, $amount) {
-    $time = time();
+  public function updateMeter($meter_id, $meter_uuid, $meter_url, $res, $meterClass) {
+    $amount = $this->pickAmount($res);
+    $last_updated_col = $this->pickCol($res);
+    // Get the most recent recording. Data fetched from the API will start at $last_recording and end at $time
+    $time = time(); // end date
     $stmt = $this->db->prepare('SELECT recorded FROM meter_data
       WHERE meter_id = ? AND resolution = ? AND value IS NOT NULL
       ORDER BY recorded DESC LIMIT 1');
     $stmt->execute(array($meter_id, $res));
-    if ($stmt->rowCount() === 1) {
-      $last_recording = $stmt->fetchColumn();
-      $empty = false;
-    }
-    else {
-      $last_recording = $amount;
-      $empty = true;
-    }
-    $stmt = $this->db->prepare('SELECT url FROM meters WHERE id = ?');
-    $stmt->execute(array($meter_id));
-    $meter_url = $stmt->fetchColumn();
-    $meter_data = $this->getMeter($meter_url . '/data', $res, $last_recording, $time, true);
+    $last_recording = ($stmt->rowCount() === 1) ? $stmt->fetchColumn() : $amount; // start date
+    $meter_data = $this->getMeter($meter_url, $res, $last_recording, $time);
     $meter_data = json_decode($meter_data, true);
     $meter_data = $meter_data['data'];
     if (!empty($meter_data)) {
-      // Clean up old data
-      $stmt = $this->db->prepare("DELETE FROM meter_data WHERE meter_id = ? AND resolution = ? AND recorded < ?");
+      // Delete data older than $amount
+      $stmt = $this->db->prepare('DELETE FROM meter_data WHERE meter_id = ? AND resolution = ? AND recorded < ?');
       $stmt->execute(array($meter_id, $res, $amount));
-      // Delete null data that we're checking again
-      $stmt = $this->db->prepare("DELETE FROM meter_data WHERE meter_id = ? AND resolution = ? AND recorded >= ? AND value IS NULL");
+      // Delete null data newer than $last_recording that we're checking again
+      $stmt = $this->db->prepare('DELETE FROM meter_data WHERE meter_id = ? AND resolution = ? AND recorded >= ? AND value IS NULL');
       $stmt->execute(array($meter_id, $res, $last_recording));
       $last_value = null;
       $last_recorded = null;
       foreach ($meter_data as $data) { // Insert new data
         $localtime = strtotime($data['localtime']);
-        if ($empty || $localtime > $last_recording) {
-          $stmt = $this->db->prepare("INSERT INTO meter_data (meter_id, value, recorded, resolution) VALUES (?, ?, ?, ?)");
+        if ($localtime > $last_recording) { // just to make sure
+          $stmt = $this->db->prepare('INSERT INTO meter_data (meter_id, value, recorded, resolution) VALUES (?, ?, ?, ?)');
           $stmt->execute(array($meter_id, $data['value'], $localtime, $res));
           if ($data['value'] !== null) {
             $last_value = $data['value'];
@@ -272,32 +306,42 @@ class BuildingOS {
           }
         }
       }
-      $stmt = $this->db->prepare('UPDATE meters SET last_update_attempt = ? WHERE id = ?');
-      $stmt->execute(array($time, $meter_id));
-      if ($last_value !== null && $res === 'live') { // Update meters table
-        $stmt = $this->db->prepare('UPDATE meters SET current = ?, last_updated = ? WHERE id = ? LIMIT 1');
-        $stmt->execute(array($last_value, $last_recorded, $meter_id));
+      if ($last_recorded !== null && $res === 'live') {
+        // Update meters table
+        $stmt = $this->db->prepare('UPDATE meters SET current = ? WHERE id = ? LIMIT 1');
+        $stmt->execute(array($last_value, $meter_id));
+        // Update relative_value records
+        $stmt = $this->db->prepare('SELECT id, grouping FROM relative_values WHERE meter_uuid = ? AND grouping IS NOT NULL');
+        $stmt->execute(array($meter_uuid));
+        foreach ($stmt->fetchAll() as $rv_row) {
+          $meterClass->updateRelativeValueOfMeter($meter_id, $rv_row['grouping'], $rv_row['id'], $last_value);
+        } // foreach
       }
     } // if !empty($meter_data)
+    $stmt = $this->db->prepare("UPDATE meters SET {$last_updated_col} = ? WHERE id = ?");
+    $stmt->execute(array($time, $meter_id));
+    return $meter_data;
   }
 
   /**
-   * Cron job to access BuildingOS API and update meter data in database.
-   * This file has the cron() function. Look at ~/scripts/jobs/ for their usage.
-   *
-   * The job at the 1 minute interval is for collecting minute resolution meter data (going back 2 hours) and updating meters current values
-   * The job at the 15 minute interval is for collecting quarterhour resolution meter data (going back 2 weeks)
-   * The job at the 1 hour interval is for collecting hour resolution meter meter data (going back 2 months) and updating the relative_values table
-   * The job at the 1 month interval is for collecting month resolution meter data (going back 2 years)
+   * This used to be the mechanism of retrieving data from the BOS API
+   * It fetches data for all the meters associated with the user_id used to instantiate the class
+   * The crons used to be:
    */
-  public function cron($meter, $res, $amount) {
+  // */2 * * * * /var/www/html/oberlin/scripts/jobs/minute.sh
+  // */15 * * * * /var/www/html/oberlin/scripts/jobs/quarterhour.sh
+  // 0 * * * * /var/www/html/oberlin/scripts/jobs/hour.sh
+  // 0 0 1 * * /var/www/html/oberlin/scripts/jobs/month.sh
+  public function cron($meterClass, $res) {
+    $amount = $this->pickAmount($res);
+    $last_updated_col = $this->pickCol($res);
     $time = time();
-    $meters = $this->db->prepare('SELECT id, bos_uuid, url FROM meters WHERE (gauges_using > 0 OR for_orb > 0 OR orb_server > 0 OR timeseries_using > 0) AND user_id = ? ORDER BY last_update_attempt ASC'); // ORDER BY last_update_attempt because sometimes the API stops responding if it's queried too quickly and not all the meters get updated
-    echo "SELECT id, bos_uuid, url FROM meters WHERE (gauges_using > 0 OR for_orb > 0 OR orb_server > 0 OR timeseries_using > 0) AND user_id = '{$this->user_id}' ORDER BY last_update_attempt ASC\n\n";
+    // Get all the meters belonging to the user id used to instantiate the class
+    $sql = "SELECT id, bos_uuid, url FROM meters WHERE (gauges_using > 0 OR for_orb > 0 OR orb_server > 0 OR timeseries_using > 0) AND user_id = ? ORDER BY {$last_updated_col} ASC";
+    $meters = $this->db->prepare($sql);
+    echo "{$sql}\n\n";
     $meters->execute(array($this->user_id));
     while ($row = $meters->fetch()) {
-      $stmt = $this->db->prepare('UPDATE meters SET last_update_attempt = ? WHERE id = ?');
-      $stmt->execute(array($time, $row['id']));
       echo "Fetching meter #{$row['id']}\n";
       // Check to see what the last recorded value is
       // I just added 'AND value IS NOT NULL' because sometimes BuildingOS returns null data and later fixes it? ...weird
@@ -342,7 +386,7 @@ class BuildingOS {
         $last_recorded = null;
         foreach ($meter_data as $data) { // Insert new data
           $localtime = strtotime($data['localtime']);
-          if ($empty || $localtime > $last_recording) {
+          if ($localtime > $last_recording) { // just to make sure
             $stmt = $this->db->prepare("INSERT INTO meter_data (meter_id, value, recorded, resolution) VALUES (?, ?, ?, ?)");
             $stmt->execute(array($row['id'], $data['value'], $localtime, $res));
             if ($data['value'] !== null) {
@@ -352,85 +396,26 @@ class BuildingOS {
             echo "{$data['value']} @ {$localtime}\n";
           }
         }
-        if ($res === 'live' && $last_recorded !== null) { // Update meters table
-          $stmt = $this->db->prepare('UPDATE meters SET current = ?, last_updated = ? WHERE id = ? LIMIT 1');
-          $stmt->execute(array($last_value, $last_recorded, $row['id']));
-        }
-        if ($res === 'live') { // Update relative_values table
+        $stmt = $this->db->prepare("UPDATE meters SET {$last_updated_col} = ? WHERE id = ?");
+        $stmt->execute(array($time, $meter['id']));
+        if ($res === 'live' && $last_recorded !== null) {
+          // Update meters table
+          $stmt = $this->db->prepare('UPDATE meters SET current = ? WHERE id = ? LIMIT 1');
+          $stmt->execute(array($last_value, $row['id']));
+          // Update relative value records
           echo "Updating relative_values table:\n";
           $stmt = $this->db->prepare('SELECT id, grouping FROM relative_values WHERE meter_uuid = ? AND grouping IS NOT NULL');
           $stmt->execute(array($row['bos_uuid']));
-          $day_of_week = date('w') + 1; // https://dev.mysql.com/doc/refman/5.5/en/date-and-time-functions.html#function_dayofweek
           foreach ($stmt->fetchAll() as $rv_row) {
-            $meter->updateRelativeValueOfMeter($row['id'], $rv_row['grouping'], $rv_row['id'], $last_value);
+            $meterClass->updateRelativeValueOfMeter($row['id'], $rv_row['grouping'], $rv_row['id'], $last_value);
             echo "Updated relative value record #{$rv_row['id']}\n";
           } // foreach
-        } //
+        }
       } // if !empty($meter_data)
       echo "==================================================================\n\n\n\n";
     }
   }
   
 }
-//*
-// echo '<pre>';
-// $test = new BuildingOS($db, 3);
-// $url = 'https://api.buildingos.com/buildings?per_page=100';
-// while (true) {
-//   $json = json_decode($test->makeCall($url), true);
-//   foreach ($json['data'] as $building) {
-//     if ($building['organization'] !== 'https://api.buildingos.com/organizations/1249') {
-//       continue;
-//     }
-//     $area = (int) (empty($building['area'])) ? 0 : $building['area'];
-//     if ($db->query('SELECT COUNT(*) FROM buildings WHERE bos_id = \''.$building['id'].'\'')->fetch()['COUNT(*)'] > 0) {
-//       continue;
-//     }
-//     $stmt = $db->prepare('INSERT INTO buildings (bos_id, name, building_type, address, loc, area, occupancy, floors, img, org_url, user_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)');
-//     $stmt->execute(array(
-//       $building['id'],
-//       $building['name'],
-//       $building['buildingType']['displayName'],
-//       "{$building['address']} {$building['postalCode']}",
-//       "{$building['location']['lat']},{$building['location']['lon']}",
-//       $area,
-//       $building['occupancy'],
-//       $building['numFloors'],
-//       $building['image'],
-//       $building['organization'],
-//       3
-//     ));
-//     $last_id = $db->lastInsertId();
-//     foreach ($building['meters'] as $meter) {
-//       $meter_json = json_decode($test->makeCall($meter['url']), true);
-//       if ($db->query('SELECT COUNT(*) FROM meters WHERE bos_uuid = \''.$meter_json['data']['uuid'].'\'')->fetch()['COUNT(*)'] > 0) {
-//         continue;
-//       }
-//       $stmt = $db->prepare('INSERT INTO meters (bos_uuid, building_id, source, name, url, building_url, units, user_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)');
-//       $stmt->execute(array(
-//         $meter_json['data']['uuid'],
-//         $last_id,
-//         'buildingos',
-//         $meter_json['data']['displayName'],
-//         $meter_json['data']['url'],
-//         $meter_json['data']['building'],
-//         $meter_json['data']['displayUnits']['displayName'],
-//         3
-//       ));
-//     }
-//   }
-//   if ($json['links']['next'] == "") { // No other data
-//     break;
-//   }
-//   else { // Other data to fetch
-//     $url = $json['links']['next'];
-//   }
-// }
-//*/
-// print_r(json_decode($test->makeCall('https://api.buildingos.com/meters/oberlin_allencroft_main_e/data'), true)); // doesnt work
-// print_r(json_decode($test->makeCall('https://api.buildingos.com/meters/oberlin_allencroft_main_e'), true)); //works
-// var_dump($test->getMeter('https://api.buildingos.com/meters/oberlin_allencroft_main_e/data', 'live', strtotime('-1 day'), time(), true));
-// print_r($test->getBuildings());
-// print_r($test->getMeter('https://api.buildingos.com/meters/oberlin_allencroft_main_e/data', 'live', strtotime('-1 day'), time()));
 
 ?>

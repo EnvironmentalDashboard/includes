@@ -246,14 +246,35 @@ class Meter {
     return $return;
   }
 
+  public function pickCol($res) {
+    switch ($res) {
+      case 'live':
+        return 'live_last_updated';
+        break;
+      case 'quarterhour':
+        return 'quarterhour_last_updated';
+        break;
+      case 'hour':
+        return 'hour_last_updated';
+        break;
+      case 'month':
+        return 'month_last_updated';
+        break;
+      default:
+        return null;
+        break;
+    }
+  }
+
   /**
    * @param Int $meter_id
    * @return Int unix timestamp
    */
-  public function lastUpdated($meter_id) {
-    $stmt = $this->db->prepare('SELECT last_updated FROM meters WHERE id = ?');
+  public function lastUpdated($meter_id, $res) {
+    $last_updated_col = $this->pickCol($res);
+    $stmt = $this->db->prepare("SELECT {$last_updated_col} FROM meters WHERE id = ?");
     $stmt->execute(array($meter_id));
-    return $stmt->fetch()['last_updated'];
+    return $stmt->fetchColumn();
   }
 
   /**
