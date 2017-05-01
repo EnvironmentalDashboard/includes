@@ -73,12 +73,15 @@ class Meter {
 
   /**
    * Updates a row in the relative_values table
+   * A meters relative value is a number 0-100 that indicates if the current reading is above or below typical usage
+   * Typical usage is the median of historical data recorded in the same hour as the current hour and on a day in the same group as the current day
+   * Day groups can look back a number of data points (one data point corresponds to one day because hour resolution data is used) or an amount of time such as “-2 weeks”
    * @param  $meter_id
    * @param  $grouping Example JSON: [{"days":[1,2,3,4,5],"npoints":8},{"days":[1,7],"start":"-2 weeks"}]
    * @param  $rv_id
    * @param  $current
    */
-  public function updateRelativeValueOfMeter($meter_id, $grouping, $rv_id, $current = null) {
+  public function updateRelativeValueOfMeter($meter_id, $grouping, $rv_id, $current = null, $debug = false) {
     if ($current === null) {
       $stmt = $this->db->prepare('SELECT current FROM meters WHERE id = ?');
       $current = $stmt->fetchColumn();
@@ -97,10 +100,12 @@ class Meter {
             ORDER BY recorded DESC LIMIT " . $amount); // ORDER BY recorded DESC is needed because we're trying to extract the most recent $amount points
           $stmt->execute(array($meter_id, 'hour'));
           $typical = array_map('floatval', array_column($stmt->fetchAll(), 'value'));
-          echo "Typical: "; var_dump($typical);
-          echo "\nCurrent: {$current}\n";
           $relative_value = $this->relativeValue($typical, $current);
-          echo "relative_value: {$relative_value}\n";
+          if ($debug) {
+            echo "Typical: "; var_dump($typical);
+            echo "\nCurrent: {$current}\n";
+            echo "relative_value: {$relative_value}\n";
+          }
         } else if (array_key_exists('start', $group)) {
           $amount = strtotime($group['start']);
           if ($amount === false) {
@@ -116,10 +121,12 @@ class Meter {
             ORDER BY value ASC"); // ORDER BY value ASC is efficient here because the relativeValue() method will sort the data like this (and there's no need to sort by recorded -- the amount of data is determined by $amount, which is a unix timestamp representing when the data should start)
           $stmt->execute(array($meter_id, $amount, time(), 'hour'));
           $typical = array_map('floatval', array_column($stmt->fetchAll(), 'value'));
-          echo "Typical: "; var_dump($typical);
-          echo "Current: {$current}\n";
           $relative_value = $this->relativeValue($typical, $current);
-          echo "relative_value: {$relative_value}\n";
+          if ($debug) {
+            echo "Typical: "; var_dump($typical);
+            echo "Current: {$current}\n";
+            echo "relative_value: {$relative_value}\n";
+          }
         }
         $stmt = $this->db->prepare('UPDATE relative_values SET relative_value = ? WHERE id = ?');
         $stmt->execute(array(round($relative_value), $rv_id));

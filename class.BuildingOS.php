@@ -233,19 +233,14 @@ class BuildingOS {
     switch ($res) {
       case 'live':
         return strtotime('-2 hours');
-        break;
       case 'quarterhour':
         return strtotime('-2 weeks');
-        break;
       case 'hour':
         return strtotime('-2 months');
-        break;
       case 'month':
         return strtotime('-2 years');
-        break;
       default:
         return null;
-        break;
     }
   }
 
@@ -253,19 +248,14 @@ class BuildingOS {
     switch ($res) {
       case 'live':
         return 'live_last_updated';
-        break;
       case 'quarterhour':
         return 'quarterhour_last_updated';
-        break;
       case 'hour':
         return 'hour_last_updated';
-        break;
       case 'month':
         return 'month_last_updated';
-        break;
       default:
         return null;
-        break;
     }
   }
 
@@ -273,7 +263,7 @@ class BuildingOS {
    * Used by daemons to update individual meters
    * 
    */
-  public function updateMeter($meter_id, $meter_uuid, $meter_url, $res, $meterClass) {
+  public function updateMeter($meter_id, $meter_uuid, $meter_url, $res, $meterClass, $debug = false) {
     $amount = $this->pickAmount($res);
     $last_updated_col = $this->pickCol($res);
     // Get the most recent recording. Data fetched from the API will start at $last_recording and end at $time
@@ -283,9 +273,18 @@ class BuildingOS {
       ORDER BY recorded DESC LIMIT 1');
     $stmt->execute(array($meter_id, $res));
     $last_recording = ($stmt->rowCount() === 1) ? $stmt->fetchColumn() : $amount; // start date
-    $meter_data = $this->getMeter($meter_url, $res, $last_recording, $time);
+    $meter_data = $this->getMeter($meter_url, $res, $last_recording, $time, $debug);
+    if ($meter_data === false) { // file_get_contents returned false, so problem with API
+      return array('false', $meter_url, $res, $last_recording, $time);
+    }
     $meter_data = json_decode($meter_data, true);
     $meter_data = $meter_data['data'];
+    if ($debug) {
+      echo 'start time of requiested data: ' . date('F j, Y, g:i a', $last_recording) . "\n";
+      echo 'current time: ' . date('F j, Y, g:i a') . "\n";
+      echo 'Meter data: ';
+      var_dump($meter_data);
+    }
     if (!empty($meter_data)) {
       // Delete data older than $amount
       $stmt = $this->db->prepare('DELETE FROM meter_data WHERE meter_id = ? AND resolution = ? AND recorded < ?');
@@ -320,7 +319,7 @@ class BuildingOS {
     } // if !empty($meter_data)
     $stmt = $this->db->prepare("UPDATE meters SET {$last_updated_col} = ? WHERE id = ?");
     $stmt->execute(array($time, $meter_id));
-    return $meter_data;
+    return array(json_encode($meter_data), $meter_url, $res, $last_recording, $time);
   }
 
   /**

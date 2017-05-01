@@ -51,7 +51,7 @@ class TimeSeries extends Meter {
     $this->peak = 0;
     $this->pad = 40; // Amount to pad sides of chart in pixels; set to 0 to turn off
     if (empty(array_filter($this->value))) {
-      echo "<!--\nCalled with __construct(\$db, $meter_id, $start, $end, $min, $max, $alt_data);\n";
+      echo "<!--\nCalled with __construct(\$db, $meter_id, $start, $end, $res, $min, $max, $alt_data);\n";
       var_dump($this->data);
       echo "-->\n";
       echo "<image xlink:href=\"images/error.svg\" x=\"400\" y=\"20\" height=\"200\" width=\"200\" /> ";
