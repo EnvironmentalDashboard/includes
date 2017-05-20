@@ -75,13 +75,12 @@ class Meter {
    * Updates a row in the relative_values table
    * A meters relative value is a number 0-100 that indicates if the current reading is above or below typical usage
    * Typical usage is the median of historical data recorded in the same hour as the current hour and on a day in the same group as the current day
-   * Day groups can look back a number of data points (one data point corresponds to one day because hour resolution data is used) or an amount of time such as “-2 weeks”
+   * Day groups can look back a number of data points (one data point corresponds to one day because hour resolution data is used) or an amount of time such as "-2 weeks"
    * @param  $meter_id
    * @param  $grouping Example JSON: [{"days":[1,2,3,4,5],"npoints":8},{"days":[1,7],"start":"-2 weeks"}]
-   * @param  $rv_id
    * @param  $current
    */
-  public function updateRelativeValueOfMeter($meter_id, $grouping, $rv_id, $current = null, $debug = false) {
+  public function updateRelativeValueOfMeter($meter_id, $grouping, $current = null, $debug = false) {
     if ($current === null) {
       $stmt = $this->db->prepare('SELECT current FROM meters WHERE id = ?');
       $current = $stmt->fetchColumn();
@@ -128,8 +127,8 @@ class Meter {
             echo "relative_value: {$relative_value}\n";
           }
         }
-        $stmt = $this->db->prepare('UPDATE relative_values SET relative_value = ? WHERE id = ?');
-        $stmt->execute(array(round($relative_value), $rv_id));
+        $stmt = $this->db->prepare('UPDATE relative_values SET relative_value = ? WHERE meter_uuid = ? AND grouping = ?');
+        $stmt->execute(array(round($relative_value), $this->IDtoUUID($meter_id), $grouping));
         break;
       }
     }
@@ -208,6 +207,16 @@ class Meter {
   public function UUIDtoID($uuid) {
     $stmt = $this->db->prepare('SELECT id FROM meters WHERE bos_uuid = ? LIMIT 1');
     $stmt->execute(array($uuid));
+    return $stmt->fetchColumn();
+  }
+
+  /**
+   * [IDtoUUID description]
+   * @param [type] $id [description]
+   */
+  public function IDtoUUID($id) {
+    $stmt = $this->db->prepare('SELECT bos_uuid FROM meters WHERE id = ? LIMIT 1');
+    $stmt->execute(array($id));
     return $stmt->fetchColumn();
   }
 

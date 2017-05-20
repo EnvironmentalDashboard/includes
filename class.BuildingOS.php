@@ -266,8 +266,11 @@ class BuildingOS {
   public function updateMeter($meter_id, $meter_uuid, $meter_url, $res, $meterClass, $debug = false) {
     $amount = $this->pickAmount($res);
     $last_updated_col = $this->pickCol($res);
-    // Get the most recent recording. Data fetched from the API will start at $last_recording and end at $time
     $time = time(); // end date
+    // update this column immediatly so other daemons dont try to update same meter
+    $stmt = $this->db->prepare("UPDATE meters SET {$last_updated_col} = ? WHERE id = ?");
+    $stmt->execute(array($time, $meter_id));
+    // Get the most recent recording. Data fetched from the API will start at $last_recording and end at $time
     $stmt = $this->db->prepare('SELECT recorded FROM meter_data
       WHERE meter_id = ? AND resolution = ? AND value IS NOT NULL
       ORDER BY recorded DESC LIMIT 1');
@@ -275,7 +278,8 @@ class BuildingOS {
     $last_recording = ($stmt->rowCount() === 1) ? $stmt->fetchColumn() : $amount; // start date
     $meter_data = $this->getMeter($meter_url, $res, $last_recording, $time, $debug);
     if ($meter_data === false) { // file_get_contents returned false, so problem with API
-      return array('false', $meter_url, $res, $last_recording, $time);
+      // return array('false', $meter_url, $res, $last_recording, $time, 4);
+      return false;
     }
     $meter_data = json_decode($meter_data, true);
     $meter_data = $meter_data['data'];
@@ -310,16 +314,16 @@ class BuildingOS {
         $stmt = $this->db->prepare('UPDATE meters SET current = ? WHERE id = ? LIMIT 1');
         $stmt->execute(array($last_value, $meter_id));
         // Update relative_value records
-        $stmt = $this->db->prepare('SELECT id, grouping FROM relative_values WHERE meter_uuid = ? AND grouping IS NOT NULL');
+        $stmt = $this->db->prepare('SELECT DISTINCT grouping FROM relative_values WHERE meter_uuid = ? AND grouping IS NOT NULL');
+        // SELECT id, grouping FROM relative_values WHERE meter_uuid = ? AND grouping IS NOT NULL
         $stmt->execute(array($meter_uuid));
         foreach ($stmt->fetchAll() as $rv_row) {
-          $meterClass->updateRelativeValueOfMeter($meter_id, $rv_row['grouping'], $rv_row['id'], $last_value);
+          $meterClass->updateRelativeValueOfMeter($meter_id, $rv_row['grouping'], $last_value);
         } // foreach
       }
     } // if !empty($meter_data)
-    $stmt = $this->db->prepare("UPDATE meters SET {$last_updated_col} = ? WHERE id = ?");
-    $stmt->execute(array($time, $meter_id));
-    return array(json_encode($meter_data), $meter_url, $res, $last_recording, $time);
+    // return array(json_encode($meter_data), $meter_url, $res, $last_recording, $time, 4);
+    return true;
   }
 
   /**
@@ -403,10 +407,10 @@ class BuildingOS {
           $stmt->execute(array($last_value, $row['id']));
           // Update relative value records
           echo "Updating relative_values table:\n";
-          $stmt = $this->db->prepare('SELECT id, grouping FROM relative_values WHERE meter_uuid = ? AND grouping IS NOT NULL');
+          $stmt = $this->db->prepare('SELECT DISTINCT grouping FROM relative_values WHERE meter_uuid = ? AND grouping IS NOT NULL');
           $stmt->execute(array($row['bos_uuid']));
           foreach ($stmt->fetchAll() as $rv_row) {
-            $meterClass->updateRelativeValueOfMeter($row['id'], $rv_row['grouping'], $rv_row['id'], $last_value);
+            $meterClass->updateRelativeValueOfMeter($row['id'], $rv_row['grouping'], $last_value);
             echo "Updated relative value record #{$rv_row['id']}\n";
           } // foreach
         }
@@ -416,5 +420,4 @@ class BuildingOS {
   }
   
 }
-
 ?>

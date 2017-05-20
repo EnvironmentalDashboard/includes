@@ -112,7 +112,7 @@ class TimeSeries extends Meter {
       }
       else {
         $y = $this->convertRange(abs($point - $max), 0, $max - $min, 0, $height) + $offset;
-        echo round($x, 1) . ',' . round($y, 1) . ' ';
+        echo round($x, 1) . ',' . round($y, 1) . ' '; // this signifigantly shortens the size of the file
         // echo "{$x},{$y} ";
         array_push($this->circlepoints, array($x, $y));
         if ($y > $this->peak) {
