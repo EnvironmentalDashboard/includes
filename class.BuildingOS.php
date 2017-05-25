@@ -5,6 +5,7 @@ error_reporting(-1);
 ini_set('display_errors', 'On');
 /**
  * Methods for retrieving data from the BuildingOS API
+ * The important methods are updateMeter() and populateDB()
  *
  * @author Tim Robert-Fitzgerald
  */
@@ -18,17 +19,22 @@ class BuildingOS {
    */
   public function __construct($db, $user_id = 1) {
     $this->db = $db;
+    if ($user_id == 0) { // test account
+      $this->token = 0;
+      $this->user_id = 0;
+      return;
+    }
     $stmt = $db->prepare('SELECT api_id FROM users WHERE id = ?');
     $stmt->execute(array($user_id));
-    $this->api_id = $stmt->fetchColumn();
+    $api_id = $stmt->fetchColumn();
     $this->user_id = $user_id;
-    $results = $db->query("SELECT token, token_updated FROM api WHERE id = {$this->api_id}");
+    $results = $db->query("SELECT token, token_updated FROM api WHERE id = {$api_id}");
     $arr = $results->fetch();
     if ($arr['token_updated'] + 3595 > time()) { // 3595 = 1 hour - 5 seconds to be safe (according to API docs, token expires after 1 hour)
       $this->token = $arr['token'];
     }
     else { // amortized cost
-      $results2 = $db->query("SELECT client_id, client_secret, username, password FROM api WHERE id = {$this->api_id}");
+      $results2 = $db->query("SELECT client_id, client_secret, username, password FROM api WHERE id = {$api_id}");
       $arr2 = $results2->fetch();
       $url = 'https://api.buildingos.com/o/token/';
       $data = array(
@@ -53,7 +59,7 @@ class BuildingOS {
       $json = json_decode($result, true);
       $this->token = $json['access_token'];
       $stmt = $db->prepare('UPDATE api SET token = ?, token_updated = ? WHERE id = ?');
-      $stmt->execute(array($this->token, time(), $this->api_id));
+      $stmt->execute(array($this->token, time(), $api_id));
     }
   }
 
@@ -75,12 +81,25 @@ class BuildingOS {
     if ($debug) {
       echo "URL: {$url}\n\n";
     }
-    $options = array(
-      'http' => array(
-        'method' => 'GET',
-        'header' => 'Authorization: Bearer ' . $this->token
+    if ($this->user_id === 0) {
+      $options = array(
+        'http' => array(
+          'method' => 'GET',
+          'header' => 'Authorization: Bearer ' . $this->token
+          ),
+        'ssl' => array(
+          'verify_peer' => false,
+          'verify_peer_name' => false,
         )
-    );
+      );
+    } else {
+      $options = array(
+        'http' => array(
+          'method' => 'GET',
+          'header' => 'Authorization: Bearer ' . $this->token
+          )
+      );
+    }
     $context = stream_context_create($options);
     $data = file_get_contents($url, false, $context);
     if ($data === false) {
@@ -260,6 +279,26 @@ class BuildingOS {
   }
 
   /**
+   * the amounts returned are kind of arbitrary but are meant to move meters back in the queue of what's being updated by updateMeter() so they don't hold up everything if updateMeter() keeps failing for some reason. note that if updateMeter() does finish, it pushes the meter to the end of the queue by updating the last_updated_col to the current time otherwise the $last_updated_col remains the current time minus the amount this function returns
+   * @param  [type] $res [description]
+   * @return [type]      [description]
+   */
+  public function move_back_amount($res) {
+    switch ($res) {
+      case 'live':
+        return 120;
+      case 'quarterhour':
+        return 300;
+      case 'hour':
+        return 600;
+      case 'month':
+        return 43200;
+      default:
+        return null;
+    }
+  }
+
+  /**
    * Used by daemons to update individual meters
    * 
    */
@@ -267,9 +306,9 @@ class BuildingOS {
     $amount = $this->pickAmount($res);
     $last_updated_col = $this->pickCol($res);
     $time = time(); // end date
-    // update this column immediatly so other daemons dont try to update same meter
+    // Move the meter back in the queue to be tried again soon in case this function does not complete and the $last_updated_col is not updated to the current time
     $stmt = $this->db->prepare("UPDATE meters SET {$last_updated_col} = ? WHERE id = ?");
-    $stmt->execute(array($time, $meter_id));
+    $stmt->execute(array($time - $this->move_back_amount($res), $meter_id));
     // Get the most recent recording. Data fetched from the API will start at $last_recording and end at $time
     $stmt = $this->db->prepare('SELECT recorded FROM meter_data
       WHERE meter_id = ? AND resolution = ? AND value IS NOT NULL
@@ -314,13 +353,15 @@ class BuildingOS {
         $stmt = $this->db->prepare('UPDATE meters SET current = ? WHERE id = ? LIMIT 1');
         $stmt->execute(array($last_value, $meter_id));
         // Update relative_value records
-        $stmt = $this->db->prepare('SELECT DISTINCT grouping FROM relative_values WHERE meter_uuid = ? AND grouping IS NOT NULL');
+        $stmt = $this->db->prepare('SELECT DISTINCT grouping FROM relative_values WHERE meter_uuid = ? AND grouping != \'[]\' AND grouping IS NOT NULL AND permission IS NOT NULL');
         // SELECT id, grouping FROM relative_values WHERE meter_uuid = ? AND grouping IS NOT NULL
         $stmt->execute(array($meter_uuid));
         foreach ($stmt->fetchAll() as $rv_row) {
           $meterClass->updateRelativeValueOfMeter($meter_id, $rv_row['grouping'], $last_value);
         } // foreach
       }
+      $stmt = $this->db->prepare("UPDATE meters SET {$last_updated_col} = ? WHERE id = ?");
+      $stmt->execute(array($time, $meter_id));
     } // if !empty($meter_data)
     // return array(json_encode($meter_data), $meter_url, $res, $last_recording, $time, 4);
     return true;

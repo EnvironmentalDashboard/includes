@@ -2,6 +2,7 @@
 date_default_timezone_set("America/New_York");
 /**
  * For retrieving meter data from the database
+ * The most important method is updateRelativeValueOfMeter() which is used by the daemons to update a meters relative value
  *
  * @author Tim Robert-Fitzgerald
  */
@@ -108,7 +109,7 @@ class Meter {
         } else if (array_key_exists('start', $group)) {
           $amount = strtotime($group['start']);
           if ($amount === false) {
-            return;
+            throw new Exception("{$group['start']} is not a parseable date");
           }
           $days = implode(',', array_map('intval', $group['days']));
           $stmt = $this->db->prepare(
@@ -266,19 +267,14 @@ class Meter {
     switch ($res) {
       case 'live':
         return 'live_last_updated';
-        break;
       case 'quarterhour':
         return 'quarterhour_last_updated';
-        break;
       case 'hour':
         return 'hour_last_updated';
-        break;
       case 'month':
         return 'month_last_updated';
-        break;
       default:
         return null;
-        break;
     }
   }
 
