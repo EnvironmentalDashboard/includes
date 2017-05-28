@@ -40,8 +40,8 @@ class Meter {
   public function relativeValue($typical, $current, $min = 0, $max = 100) {
     array_push($typical, $current);
     sort($typical, SORT_NUMERIC);
-    $index = array_search($current, $typical) + 1;
-    $relative_value = (($index) / count($typical)) * 100; // Get percent (0-100)
+    $index = array_search($current, $typical);
+    $relative_value = ($index / (count($typical)-1)) * 100; // Get percent (0-100)
     return $this->scale($relative_value, $min, $max); // Scale to $min and $max and return
   }
 
@@ -84,6 +84,7 @@ class Meter {
   public function updateRelativeValueOfMeter($meter_id, $grouping, $current = null, $debug = false) {
     if ($current === null) {
       $stmt = $this->db->prepare('SELECT current FROM meters WHERE id = ?');
+      $stmt->execute(array($meter_id));
       $current = $stmt->fetchColumn();
     }
     $day_of_week = date('w') + 1; // https://dev.mysql.com/doc/refman/5.5/en/date-and-time-functions.html#function_dayofweek
@@ -130,7 +131,7 @@ class Meter {
         }
         $stmt = $this->db->prepare('UPDATE relative_values SET relative_value = ? WHERE meter_uuid = ? AND grouping = ?');
         $stmt->execute(array(round($relative_value), $this->IDtoUUID($meter_id), $grouping));
-        break;
+        return $stmt->rowCount();
       }
     }
   }
