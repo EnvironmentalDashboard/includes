@@ -303,6 +303,9 @@ class BuildingOS {
    * 
    */
   public function updateMeter($meter_id, $meter_uuid, $meter_url, $res, $meterClass, $debug = false) {
+    if ($debug) {
+      $log = array();
+    }
     $amount = $this->pickAmount($res);
     $last_updated_col = $this->pickCol($res);
     $time = time(); // end date
@@ -315,7 +318,13 @@ class BuildingOS {
       ORDER BY recorded DESC LIMIT 1');
     $stmt->execute(array($meter_id, $res));
     $last_recording = ($stmt->rowCount() === 1) ? $stmt->fetchColumn() : $amount; // start date
-    $meter_data = $this->getMeter($meter_url, $res, $last_recording, $time, $debug);
+    if ($debug) {
+      ob_start();
+      $meter_data = $this->getMeter($meter_url, $res, $last_recording, $time, $debug);
+      $log['URL'] = ob_get_clean();
+    } else {
+      $meter_data = $this->getMeter($meter_url, $res, $last_recording, $time, $debug);
+    }
     if ($meter_data === false) { // file_get_contents returned false, so problem with API
       // return array('false', $meter_url, $res, $last_recording, $time, 4);
       return false;
@@ -323,10 +332,9 @@ class BuildingOS {
     $meter_data = json_decode($meter_data, true);
     $meter_data = $meter_data['data'];
     if ($debug) {
-      echo 'start time of requiested data: ' . date('F j, Y, g:i a', $last_recording) . "\n";
-      echo 'current time: ' . date('F j, Y, g:i a') . "\n";
-      echo 'Meter data: ';
-      var_dump($meter_data);
+      $log['Start time of requested data'] = date('F j, Y, g:i a', $last_recording);
+      $log['Current time'] = date('F j, Y, g:i a');
+      $log['Meter data'] = var_export($meter_data, true);
     }
     if (!empty($meter_data)) {
       // Delete data older than $amount
@@ -358,12 +366,15 @@ class BuildingOS {
         $stmt->execute(array($meter_uuid));
         foreach ($stmt->fetchAll() as $rv_row) {
           $meterClass->updateRelativeValueOfMeter($meter_id, $rv_row['grouping'], $last_value);
-        } // foreach
+        }
       }
       $stmt = $this->db->prepare("UPDATE meters SET {$last_updated_col} = ? WHERE id = ?");
       $stmt->execute(array($time, $meter_id));
     } // if !empty($meter_data)
     // return array(json_encode($meter_data), $meter_url, $res, $last_recording, $time, 4);
+    if ($debug) {
+      echo json_encode($log);
+    }
     return true;
   }
 

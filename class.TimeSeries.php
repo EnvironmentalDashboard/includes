@@ -27,12 +27,15 @@ class TimeSeries extends Meter {
     else {
       $this->data = ($alt_data === null) ? parent::getDataFromTo($meter_id, $start, $end, $res) : $alt_data;
     }
+    $all_null = true;
     // PHP doesnt care about types but when printing array with json_encode() strings are printed
     for ($i = 0; $i < count($this->data); $i++) { 
       if ($this->data[$i]['value'] !== null) {
         $this->data[$i]['value'] = floatval($this->data[$i]['value']);
+        $all_null = false;
       }
     }
+    // $this->data = $this->change_resolution($this->data);
     $this->fill = true;
     $this->dashed = true;
     $this->meter_id = $meter_id;
@@ -50,7 +53,7 @@ class TimeSeries extends Meter {
     $this->baseload = PHP_INT_MAX;
     $this->peak = 0;
     $this->pad = 40; // Amount to pad sides of chart in pixels; set to 0 to turn off
-    if (empty(array_filter($this->value))) {
+    if ($all_null) {
       echo "<!--\nCalled with __construct(\$db, $meter_id, $start, $end, $res, $min, $max, $alt_data);\n";
       var_dump($this->data);
       echo "-->\n";
@@ -182,8 +185,10 @@ class TimeSeries extends Meter {
   public function fill($fill) { $this->fill = $fill; }
   public function color($color) { $this->color = $color; }
   public function stroke_width($stroke_width) { $this->stroke_width = $stroke_width; }
-  public function setMax($max = null) { $this->max = ($max === null) ? max($this->value) : $max; }
-  public function setMin($min = null) { $this->min = ($min === null) ? min(array_filter($this->value)) : $min; }
+  public function setMax($max = null) {
+    $this->max = ($max === null) ? max($this->value) : $max; }
+  public function setMin($min = null) {
+    $this->min = ($min === null) ? min($this->value) : $min; }
 
   /**
    * Sets the y-axis
@@ -201,7 +206,8 @@ class TimeSeries extends Meter {
     // Output will be an array of the Y axis values that
     // encompass the Y values.
     if ($this->min === null || $this->max === null) {
-      die('Need to set min/max before calling yAxis()');
+      debug_print_backtrace();
+      die("Need to set min/max before calling yAxis()\nmeter_id: {$this->meter_id}\n");
     }
     $yMax = $this->max;
     $yMin = $this->min;
@@ -285,6 +291,39 @@ class TimeSeries extends Meter {
     
     return number_format($n);
   }
+
+  /**
+   * Makes all the timescales have a uniform resolution
+   * $arr array of data
+   * $interval sets the time between data e.g. 60 would result in minute-resoultion data
+   */
+  // private function change_resolution($arr, $interval = 60) {
+  //   $result = array(array('value' => $arr[0]['value'], 'recorded' => $arr[0]['recorded']));
+  //   $index = 0;
+  //   $count = count($arr);
+  //   for ($i = 0; $i < $result_res; $i++) {
+  //     $index = $this->convertRange($i, 0, $count, 0, $result_res);
+  //     $last_point = $arr[$index]['value'];
+  //     $last_recorded = $arr[$index]['recorded'];
+  //     $next_point = $arr[$index + 1]['value'];
+  //     $next_recorded = $arr[$index + 1]['recorded'];
+  //     $value = $last_point + ((($next_recorded - $last_recorded)/$interval)*($next_point-$last_recorded)); // the fraction you are to the next point times the difference between the current and next point added to $last_point
+  //     $result[] = array('value' => $value, 'recorded' => $recorded);
+  //   }
+  //   while (true) {
+  //     if ($index < $count) { // this is not the last point to be processed
+  //       $last_point = $arr[$index]['value'];
+  //       $last_recorded = $arr[$index]['recorded'];
+  //       $next_point = $arr[$index + 1]['value'];
+  //       $next_recorded = $arr[$index + 1]['recorded'];
+  //       $value = $last_point + ((($next_recorded - $last_recorded)/$interval)*($next_point-$last_recorded)); // the fraction you are to the next point times the difference between the current and next point added to $last_point
+  //       $result[] = array('value' => $value, 'recorded' => $recorded);
+  //     }
+  //   }
+  //   if (count($arr) < $num_points) {
+  //     # code...
+  //   }
+  // }
 
   // /**
   //  * Helper function for RamerDouglasPeucker()

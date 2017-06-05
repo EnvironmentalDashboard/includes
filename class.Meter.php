@@ -41,6 +41,16 @@ class Meter {
     array_push($typical, $current);
     sort($typical, SORT_NUMERIC);
     $index = array_search($current, $typical);
+    // If the $typical data contains lots of entries that are the same as $current, taking the first occurrance of $current with array_search() understates the relative value
+    $occurrances = 0;
+    for ($i = 0; $i < count($typical); $i++) { 
+      if ($typical[$i] === $current) {
+        $occurrances++;
+      }
+    }
+    if ($occurrances > 1) {
+      $index += floor($occurrances / 2);
+    }
     $relative_value = ($index / (count($typical)-1)) * 100; // Get percent (0-100)
     return $this->scale($relative_value, $min, $max); // Scale to $min and $max and return
   }
@@ -87,25 +97,40 @@ class Meter {
       $stmt->execute(array($meter_id));
       $current = $stmt->fetchColumn();
     }
+    if ($debug) {
+      $log = array('Grouping' => $grouping);
+    }
     $day_of_week = date('w') + 1; // https://dev.mysql.com/doc/refman/5.5/en/date-and-time-functions.html#function_dayofweek
     foreach (json_decode($grouping, true) as $group) {
       if (in_array($day_of_week, $group['days'])) {
         if (array_key_exists('npoints', $group)) {
           $amount = intval($group['npoints']);
           $days = implode(',', array_map('intval', $group['days'])); // prevent sql injection with intval as we're concatenating directly into query
-          $stmt = $this->db->prepare(
+          if ($debug) { // also grab recorded col for verification
+            $stmt = $this->db->prepare(
+            "SELECT value, FROM_UNIXTIME(recorded, '%W, %M %D, %h:%i %p') AS recorded FROM meter_data
+            WHERE meter_id = ? AND value IS NOT NULL AND resolution = ?
+            AND HOUR(FROM_UNIXTIME(recorded)) = HOUR(NOW())
+            AND DAYOFWEEK(FROM_UNIXTIME(recorded)) IN ({$days})
+            ORDER BY recorded DESC LIMIT " . $amount);
+          } else {
+            $stmt = $this->db->prepare(
             "SELECT value FROM meter_data
             WHERE meter_id = ? AND value IS NOT NULL AND resolution = ?
             AND HOUR(FROM_UNIXTIME(recorded)) = HOUR(NOW())
             AND DAYOFWEEK(FROM_UNIXTIME(recorded)) IN ({$days})
             ORDER BY recorded DESC LIMIT " . $amount); // ORDER BY recorded DESC is needed because we're trying to extract the most recent $amount points
+          }
           $stmt->execute(array($meter_id, 'hour'));
-          $typical = array_map('floatval', array_column($stmt->fetchAll(), 'value'));
+          $typical = $stmt->fetchAll();
+          if ($debug) {
+            $log['Typical data'] = var_export($typical, true);
+            $log['Current reading'] = $current;
+          }
+          $typical = array_map('floatval', array_column($typical, 'value'));
           $relative_value = $this->relativeValue($typical, $current);
           if ($debug) {
-            echo "Typical: "; var_dump($typical);
-            echo "\nCurrent: {$current}\n";
-            echo "relative_value: {$relative_value}\n";
+            $log['Relative value'] = $relative_value;
           }
         } else if (array_key_exists('start', $group)) {
           $amount = strtotime($group['start']);
@@ -113,25 +138,46 @@ class Meter {
             throw new Exception("{$group['start']} is not a parseable date");
           }
           $days = implode(',', array_map('intval', $group['days']));
-          $stmt = $this->db->prepare(
-            "SELECT value, recorded FROM meter_data
-            WHERE meter_id = ? AND value IS NOT NULL
-            AND recorded > ? AND recorded < ? AND resolution = ?
-            AND HOUR(FROM_UNIXTIME(recorded)) = HOUR(NOW())
-            AND DAYOFWEEK(FROM_UNIXTIME(recorded)) IN ({$days})
-            ORDER BY value ASC"); // ORDER BY value ASC is efficient here because the relativeValue() method will sort the data like this (and there's no need to sort by recorded -- the amount of data is determined by $amount, which is a unix timestamp representing when the data should start)
+          if ($debug) {
+            $stmt = $this->db->prepare(
+              "SELECT value, FROM_UNIXTIME(recorded, '%W, %M %D, %h:%i %p') AS recorded FROM meter_data
+              WHERE meter_id = ? AND value IS NOT NULL
+              AND recorded > ? AND recorded < ? AND resolution = ?
+              AND HOUR(FROM_UNIXTIME(recorded)) = HOUR(NOW())
+              AND DAYOFWEEK(FROM_UNIXTIME(recorded)) IN ({$days})
+              ORDER BY value ASC");
+          } else {
+            $stmt = $this->db->prepare(
+              "SELECT value FROM meter_data
+              WHERE meter_id = ? AND value IS NOT NULL
+              AND recorded > ? AND recorded < ? AND resolution = ?
+              AND HOUR(FROM_UNIXTIME(recorded)) = HOUR(NOW())
+              AND DAYOFWEEK(FROM_UNIXTIME(recorded)) IN ({$days})
+              ORDER BY value ASC"); // ORDER BY value ASC is efficient here because the relativeValue() method will sort the data like this (and there's no need to sort by recorded -- the amount of data is determined by $amount, which is a unix timestamp representing when the data should start)
+          }
           $stmt->execute(array($meter_id, $amount, time(), 'hour'));
-          $typical = array_map('floatval', array_column($stmt->fetchAll(), 'value'));
+          $typical = $stmt->fetchAll();
+          if ($debug) {
+            $log['Typical data'] = var_export($typical, true);
+            $log['Current reading'] = $current;
+          }
+          $typical = array_map('floatval', array_column($typical, 'value'));
           $relative_value = $this->relativeValue($typical, $current);
           if ($debug) {
-            echo "Typical: "; var_dump($typical);
-            echo "Current: {$current}\n";
-            echo "relative_value: {$relative_value}\n";
+            $log['Relative value'] = $relative_value;
           }
         }
+        $uuid = $this->IDtoUUID($meter_id);
         $stmt = $this->db->prepare('UPDATE relative_values SET relative_value = ? WHERE meter_uuid = ? AND grouping = ?');
-        $stmt->execute(array(round($relative_value), $this->IDtoUUID($meter_id), $grouping));
-        return $stmt->rowCount();
+        $stmt->execute(array(round($relative_value), $uuid, $grouping));
+        // $rows_updated = $stmt->rowCount(); // if $relative_value doesnt change, it doesnt increment rowCount()
+        if ($debug) {
+          $rows_updated = $this->db->prepare('SELECT COUNT(*) FROM relative_values WHERE meter_uuid = ? AND grouping = ?');
+          $rows_updated->execute(array($uuid, $grouping));
+          $log['Relative value configurations updated'] = $rows_updated->fetchColumn();
+          echo json_encode($log);
+        }
+        return true;
       }
     }
   }
