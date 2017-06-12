@@ -19,7 +19,7 @@ class TimeSeries extends Meter {
    * @param $max if not null, the graph will be scaled to this number rather than the datas max
    * @param $alt_data if not null, will be used instead of calling getDataFromTo()
   */
-  public function __construct($db, $meter_id, $start, $end, $res = null, $min = null, $max = null, $alt_data = null) {
+  public function __construct($db, $meter_id, $start, $end, $res, $min = null, $max = null, $alt_data = null) {
     parent::__construct($db);
     if ($res === 'daily') {
       $this->data = ($alt_data === null) ? parent::getDailyData($meter_id, $start, $end) : $alt_data;
@@ -27,12 +27,10 @@ class TimeSeries extends Meter {
     else {
       $this->data = ($alt_data === null) ? parent::getDataFromTo($meter_id, $start, $end, $res) : $alt_data;
     }
-    $all_null = true;
     // PHP doesnt care about types but when printing array with json_encode() strings are printed
     for ($i = 0; $i < count($this->data); $i++) { 
       if ($this->data[$i]['value'] !== null) {
         $this->data[$i]['value'] = floatval($this->data[$i]['value']);
-        $all_null = false;
       }
     }
     // $this->data = $this->change_resolution($this->data);
@@ -53,12 +51,19 @@ class TimeSeries extends Meter {
     $this->baseload = PHP_INT_MAX;
     $this->peak = 0;
     $this->pad = 40; // Amount to pad sides of chart in pixels; set to 0 to turn off
-    if ($all_null) {
+    // $this->pct_thru = $this->convertRange(time(), $start, $end, 1, 100); // What percent the current time is through the time frame
+    $this->value_null_removed = array();
+    for ($i = 0; $i < count($this->value); $i++) { 
+      if ($this->value[$i] !== null) {
+        $this->value_null_removed[] = $this->value[$i];
+      }
+    }
+    if (empty($this->value_null_removed)) {
       echo "<!--\nCalled with __construct(\$db, $meter_id, $start, $end, $res, $min, $max, $alt_data);\n";
       var_dump($this->data);
       echo "-->\n";
-      echo "<image xlink:href=\"images/error.svg\" x=\"400\" y=\"20\" height=\"200\" width=\"200\" /> ";
-      echo "<text x='50' y='275' font-weight='600' font-family='Roboto,Helvetica,sans-serif' font-size='35'>There are no data for meter #{$meter_id}; please select another.</text>";
+      // echo "<image xlink:href=\"images/error.svg\" x=\"450\" y=\"20\" height=\"200\" width=\"100\" /> ";
+      echo "<text x='350' y='200' font-weight='600' style='fill:#7f8c8d;font-weight:300' font-family='Roboto,Helvetica,sans-serif' font-size='15'>There are no data for meter #{$meter_id}; please select another.</text>";
       echo "\n<script type='text/javascript'>\n";
       echo "// <![CDATA[;\n";
       echo "setTimeout(function(){ window.location.reload(); }, 30000);\n";
@@ -82,10 +87,15 @@ class TimeSeries extends Meter {
     $last_point = 0;
     $max = ($alt_max === null) ? $this->max : $alt_max;
     $min = ($alt_min === null) ? $this->min : $alt_min;
-    $increment = abs($width / ($this->count - 1));
-    if ($this->pad !== 0) {
-      $increment = $increment * ((400-$this->pad)/400);
-    }
+    // the number of pixels covered by one iteration
+    // $increment = (($width - ($this->pad*2))*$this->pct_thru) * (1/$this->count);
+    $increment = ($width/1.25)*(1/$this->count);//(($width-($this->pad*2))*$this->pct_thru)*(1/$this->count);
+    // $increment = abs($width / ($this->count - 1));
+    // if ($this->pad !== 0) {
+    //   $increment = $increment * ((400-$this->pad)/400);
+    // }
+    // 
+    // $increment = ($width - ($this->pad*2))* (1/$this->count); // the total distance covered by one iteration
     if ($this->fill) { // Need to print polygons that are the 'fill'
       echo "<polygon fill='{$this->color}' fill-opacity='0.25' points='";
       foreach ($this->value as $point) {
@@ -115,7 +125,7 @@ class TimeSeries extends Meter {
       }
       else {
         $y = $this->convertRange(abs($point - $max), 0, $max - $min, 0, $height) + $offset;
-        echo round($x, 1) . ',' . round($y, 1) . ' '; // this signifigantly shortens the size of the file
+        echo round($x, 1) . ',' . round($y, 1) . ' '; // rounding signifigantly shortens the size of the file
         // echo "{$x},{$y} ";
         array_push($this->circlepoints, array($x, $y));
         if ($y > $this->peak) {
@@ -147,6 +157,9 @@ class TimeSeries extends Meter {
    * Scales a number from an old range to a new range
    */
   public function convertRange($val, $old_min, $old_max, $new_min, $new_max) {
+    if ($old_max == $old_min) {
+      return 0;
+    }
     return ((($new_max - $new_min) * ($val - $old_min)) / ($old_max - $old_min)) + $new_min;
   }
 
@@ -186,9 +199,9 @@ class TimeSeries extends Meter {
   public function color($color) { $this->color = $color; }
   public function stroke_width($stroke_width) { $this->stroke_width = $stroke_width; }
   public function setMax($max = null) {
-    $this->max = ($max === null) ? max($this->value) : $max; }
+    $this->max = ($max === null) ? max($this->value_null_removed) : $max; }
   public function setMin($min = null) {
-    $this->min = ($min === null) ? min($this->value) : $min; }
+    $this->min = ($min === null) ? min($this->value_null_removed) : $min; }
 
   /**
    * Sets the y-axis

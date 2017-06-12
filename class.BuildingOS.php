@@ -392,7 +392,7 @@ class BuildingOS {
     $last_updated_col = $this->pickCol($res);
     $time = time();
     // Get all the meters belonging to the user id used to instantiate the class
-    $sql = "SELECT id, bos_uuid, url FROM meters WHERE (gauges_using > 0 OR for_orb > 0 OR orb_server > 0 OR timeseries_using > 0) AND user_id = ? ORDER BY {$last_updated_col} ASC";
+    $sql = "SELECT id, bos_uuid, url FROM meters WHERE (gauges_using > 0 OR for_orb > 0 OR timeseries_using > 0) OR bos_uuid IN (SELECT DISTINCT meter_uuid FROM relative_values WHERE permission = 'orb_server') AND user_id = ? ORDER BY {$last_updated_col} ASC";
     $meters = $this->db->prepare($sql);
     echo "{$sql}\n\n";
     $meters->execute(array($this->user_id));

@@ -108,7 +108,7 @@ class Meter {
           $days = implode(',', array_map('intval', $group['days'])); // prevent sql injection with intval as we're concatenating directly into query
           if ($debug) { // also grab recorded col for verification
             $stmt = $this->db->prepare(
-            "SELECT value, FROM_UNIXTIME(recorded, '%W, %M %D, %h:%i %p') AS recorded FROM meter_data
+            "SELECT value, FROM_UNIXTIME(recorded, '%W, %M %D, %h:%i %p') AS `time` FROM meter_data
             WHERE meter_id = ? AND value IS NOT NULL AND resolution = ?
             AND HOUR(FROM_UNIXTIME(recorded)) = HOUR(NOW())
             AND DAYOFWEEK(FROM_UNIXTIME(recorded)) IN ({$days})
@@ -140,7 +140,7 @@ class Meter {
           $days = implode(',', array_map('intval', $group['days']));
           if ($debug) {
             $stmt = $this->db->prepare(
-              "SELECT value, FROM_UNIXTIME(recorded, '%W, %M %D, %h:%i %p') AS recorded FROM meter_data
+              "SELECT value, FROM_UNIXTIME(recorded, '%W, %M %D, %h:%i %p') AS `time` FROM meter_data
               WHERE meter_id = ? AND value IS NOT NULL
               AND recorded > ? AND recorded < ? AND resolution = ?
               AND HOUR(FROM_UNIXTIME(recorded)) = HOUR(NOW())
