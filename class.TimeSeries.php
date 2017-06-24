@@ -21,7 +21,7 @@ class TimeSeries extends Meter {
   */
   public function __construct($db, $meter_id, $start, $end, $res, $min = null, $max = null, $alt_data = null) {
     parent::__construct($db);
-    if ($res === 'daily') {
+    if ($res === 'daily') { // dont collect daily data (although it is avail. from api) so have to calc it
       $this->data = ($alt_data === null) ? parent::getDailyData($meter_id, $start, $end) : $alt_data;
     }
     else {
@@ -33,7 +33,7 @@ class TimeSeries extends Meter {
         $this->data[$i]['value'] = floatval($this->data[$i]['value']);
       }
     }
-    // $this->data = $this->change_resolution($this->data);
+    $this->data = $this->change_resolution($this->data, 750); // all lines will consist of 750 points
     $this->fill = true;
     $this->dashed = true;
     $this->meter_id = $meter_id;
@@ -89,11 +89,11 @@ class TimeSeries extends Meter {
     $min = ($alt_min === null) ? $this->min : $alt_min;
     // the number of pixels covered by one iteration
     // $increment = (($width - ($this->pad*2))*$this->pct_thru) * (1/$this->count);
-    $increment = ($width/1.25)*(1/$this->count);//(($width-($this->pad*2))*$this->pct_thru)*(1/$this->count);
-    // $increment = abs($width / ($this->count - 1));
-    // if ($this->pad !== 0) {
-    //   $increment = $increment * ((400-$this->pad)/400);
-    // }
+    // $increment = ($width/1.25)*(1/$this->count);//(($width-($this->pad*2))*$this->pct_thru)*(1/$this->count);
+    $increment = abs($width / ($this->count - 1));
+    if ($this->pad !== 0) {
+      $increment = $increment * ((400-$this->pad)/400);
+    }
     // 
     // $increment = ($width - ($this->pad*2))* (1/$this->count); // the total distance covered by one iteration
     if ($this->fill) { // Need to print polygons that are the 'fill'
@@ -308,35 +308,32 @@ class TimeSeries extends Meter {
   /**
    * Makes all the timescales have a uniform resolution
    * $arr array of data
-   * $interval sets the time between data e.g. 60 would result in minute-resoultion data
+   * $result_size size of returned array
    */
-  // private function change_resolution($arr, $interval = 60) {
-  //   $result = array(array('value' => $arr[0]['value'], 'recorded' => $arr[0]['recorded']));
-  //   $index = 0;
-  //   $count = count($arr);
-  //   for ($i = 0; $i < $result_res; $i++) {
-  //     $index = $this->convertRange($i, 0, $count, 0, $result_res);
-  //     $last_point = $arr[$index]['value'];
-  //     $last_recorded = $arr[$index]['recorded'];
-  //     $next_point = $arr[$index + 1]['value'];
-  //     $next_recorded = $arr[$index + 1]['recorded'];
-  //     $value = $last_point + ((($next_recorded - $last_recorded)/$interval)*($next_point-$last_recorded)); // the fraction you are to the next point times the difference between the current and next point added to $last_point
-  //     $result[] = array('value' => $value, 'recorded' => $recorded);
-  //   }
-  //   while (true) {
-  //     if ($index < $count) { // this is not the last point to be processed
-  //       $last_point = $arr[$index]['value'];
-  //       $last_recorded = $arr[$index]['recorded'];
-  //       $next_point = $arr[$index + 1]['value'];
-  //       $next_recorded = $arr[$index + 1]['recorded'];
-  //       $value = $last_point + ((($next_recorded - $last_recorded)/$interval)*($next_point-$last_recorded)); // the fraction you are to the next point times the difference between the current and next point added to $last_point
-  //       $result[] = array('value' => $value, 'recorded' => $recorded);
-  //     }
-  //   }
-  //   if (count($arr) < $num_points) {
-  //     # code...
-  //   }
-  // }
+  private function change_resolution($data, $result_size) {
+    if (count($data) > $result_size) {
+      throw new Exception('Size of $data array must be less than $result_size');
+    }
+    $return = array();
+    for ($i = 0; $i < $result_size; $i++) {
+      $index_fraction = $this->convertRange($i, 0, $result_size-1, 0, count($data)-1);
+      $floor = floor($index_fraction); // index of current data point
+      $ceil = ceil($index_fraction); // index of next point
+      $current_point = $data[$floor]['value'];
+      $next_point = $data[$ceil]['value'];
+      $pct = $index_fraction - $floor;
+      $diff = $next_point - $current_point;
+      $current_time = $data[$floor]['recorded'];
+      $next_time = $data[$ceil]['recorded'];
+      $diff2 = $next_time - $current_time;
+      if ($current_point === null || $next_point === null) {
+        $return[$i] = array('value' => null, 'recorded' => $current_time+round($pct*$diff2));
+      } else {
+        $return[$i] = array('value' => $current_point+($pct*$diff), 'recorded' => $current_time+round($pct*$diff2));
+      }
+    }
+    return $return;
+  }
 
   // /**
   //  * Helper function for RamerDouglasPeucker()
