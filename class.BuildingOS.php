@@ -143,6 +143,7 @@ class BuildingOS {
 
   /**
    * Retrieves a list of buildings with their meter and other data stored in a multidimensional array.
+   * Very similiar to 
    */
   public function getBuildings() {
     $url = 'https://api.buildingos.com/buildings?per_page=100';
@@ -226,11 +227,12 @@ class BuildingOS {
           if ($this->db->query('SELECT COUNT(*) FROM meters WHERE bos_uuid = \''.$meter_json['data']['uuid'].'\'')->fetch()['COUNT(*)'] > 0) {
             continue;
           }
-          $stmt = $this->db->prepare('INSERT INTO meters (bos_uuid, building_id, source, name, url, building_url, units, user_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)');
+          $stmt = $this->db->prepare('INSERT INTO meters (bos_uuid, building_id, source, scope, name, url, building_url, units, user_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)');
           $stmt->execute(array(
             $meter_json['data']['uuid'],
             $last_id,
             'buildingos',
+            $meter_json['data']['scope']['displayName'],
             $meter_json['data']['displayName'],
             $meter_json['data']['url'],
             $meter_json['data']['building'],
@@ -248,6 +250,9 @@ class BuildingOS {
     }
   }
 
+  /**
+   * Helper for updateMeter()
+   */
   public function pickAmount($res) {
     switch ($res) {
       case 'live':
@@ -263,6 +268,9 @@ class BuildingOS {
     }
   }
 
+  /**
+   * Helper for updateMeter()
+   */
   public function pickCol($res) {
     switch ($res) {
       case 'live':
@@ -279,6 +287,7 @@ class BuildingOS {
   }
 
   /**
+   * Helper for updateMeter()
    * the amounts returned are kind of arbitrary but are meant to move meters back in the queue of what's being updated by updateMeter() so they don't hold up everything if updateMeter() keeps failing for some reason. note that if updateMeter() does finish, it pushes the meter to the end of the queue by updating the last_updated_col to the current time otherwise the $last_updated_col remains the current time minus the amount this function returns
    * @param  [type] $res [description]
    * @return [type]      [description]
@@ -378,6 +387,27 @@ class BuildingOS {
     return true;
   }
 
+  // These methods update the database with building/meter meta data from the API
+  /**
+   * Retrieves the meter scope for each meter in the db and updates it.
+   * @return [type] [description]
+   */
+  public function updateMeterScope() {
+    foreach ($this->db->query("SELECT url FROM meters WHERE source = 'buildingos' AND user_id = {$this->user_id}") as $meter) {
+      $json = json_decode($this->makeCall($meter['url']), true);
+      $scope = $json['data']['scope']['displayName'];
+      $stmt = $this->db->prepare('UPDATE meters SET scope = ? WHERE url = ?');
+      $stmt->execute(array($scope, $meter['url']));
+    }
+  }
+
+  /**
+   * Adds buildings from the BuildingOS API that aren't already in the database.
+   * Optionally delete buildings that no longer exist in the API
+   */
+  // public function syncBuildings($delete_not_found = false) {}
+  // public function syncMeters($delete_not_found = false) {}
+
   /**
    * This used to be the mechanism of retrieving data from the BOS API
    * It fetches data for all the meters associated with the user_id used to instantiate the class
@@ -387,6 +417,7 @@ class BuildingOS {
   // */15 * * * * /var/www/html/oberlin/scripts/jobs/quarterhour.sh
   // 0 * * * * /var/www/html/oberlin/scripts/jobs/hour.sh
   // 0 0 1 * * /var/www/html/oberlin/scripts/jobs/month.sh
+  /*
   public function cron($meterClass, $res) {
     $amount = $this->pickAmount($res);
     $last_updated_col = $this->pickCol($res);
@@ -470,6 +501,7 @@ class BuildingOS {
       echo "==================================================================\n\n\n\n";
     }
   }
+  */
   
 }
 ?>
