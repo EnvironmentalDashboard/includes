@@ -390,14 +390,30 @@ class BuildingOS {
   // These methods update the database with building/meter meta data from the API
   /**
    * Retrieves the meter scope for each meter in the db and updates it.
-   * @return [type] [description]
    */
   public function updateMeterScope() {
-    foreach ($this->db->query("SELECT url FROM meters WHERE source = 'buildingos' AND user_id = {$this->user_id}") as $meter) {
-      $json = json_decode($this->makeCall($meter['url']), true);
+    foreach ($this->db->query("SELECT url FROM meters WHERE scope = '' AND source = 'buildingos' AND user_id = {$this->user_id}") as $meter) {
+      $contents = $this->makeCall($meter['url']);
+      if ($contents === false) {
+        continue;
+      }
+      $json = json_decode($contents, true);
       $scope = $json['data']['scope']['displayName'];
       $stmt = $this->db->prepare('UPDATE meters SET scope = ? WHERE url = ?');
       $stmt->execute(array($scope, $meter['url']));
+    }
+  }
+
+  public function updateMeterUnits() {
+    foreach ($this->db->query("SELECT url FROM meters WHERE units = '' AND source = 'buildingos' AND user_id = {$this->user_id}") as $meter) {
+      $contents = $this->makeCall($meter['url']);
+      if ($contents === false) {
+        continue;
+      }
+      $json = json_decode($contents, true);
+      $units = $json['meta']['units']['value']['displayName'];
+      $stmt = $this->db->prepare('UPDATE meters SET units = ? WHERE url = ?');
+      $stmt->execute(array($units, $meter['url']));
     }
   }
 
