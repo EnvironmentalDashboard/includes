@@ -4,8 +4,10 @@ require_once 'db.php';
 error_reporting(-1);
 ini_set('display_errors', 'On');
 /**
- * Methods for retrieving data from the BuildingOS API
- * The important methods are updateMeter() and populateDB()
+ * The first half of this class contains methods for retrieving data from the BuildingOS API
+ * The second half of this class has methods for updating the database with data from the API
+ * updateMeter() is the most important method, as it is used by the daemons to cache meter data from the API
+ * Most of the other methods aren't used much because they're only needed when meta data about a building/meter has changed in BuildingOS
  *
  * @author Tim Robert-Fitzgerald
  */
@@ -63,12 +65,10 @@ class BuildingOS {
     }
   }
 
-  /**
-   * @return $token for API calls
+
+  /*
+    ====== METHODS TO RETRIEVE DATA FROM THE API ======
    */
-  public function getToken() {
-    return $this->token;
-  }
 
   /**
    * Makes a call to the given URL with the 'Authorization: Bearer $token' header.
@@ -77,7 +77,7 @@ class BuildingOS {
    * @param $debug if set to true will output the URL used
    * @return contents of web page or false if there was an error
    */
-  public function makeCall($url, $debug = false) {
+  private function makeCall($url, $debug = false) {
     if ($debug) {
       echo "URL: {$url}\n\n";
     }
@@ -102,8 +102,9 @@ class BuildingOS {
     }
     $context = stream_context_create($options);
     $data = file_get_contents($url, false, $context);
-    if ($data === false) {
+    if ($data === false) { // If the API didnt return a proper response
       if ($http_response_header[0] === 'HTTP/1.1 429 TOO MANY REQUESTS') {
+        // If it was because the API is being queried too quickly, sleep
         sleep( 1 + preg_replace('/\D/', '', $http_response_header[5]) );
       }
       // Try again
@@ -122,7 +123,7 @@ class BuildingOS {
    * @param $debug if set to true will output the URL used
    * @return contents of web page or false if there was an error
    */
-  public function getMeter($meter, $res, $start, $end, $debug = false) {
+  private function getMeter($meter, $res, $start, $end, $debug = false) {
     $start = date('c', $start);
     $end = date('c', $end);
     if ($start === false || $end === false) {
@@ -143,46 +144,65 @@ class BuildingOS {
 
   /**
    * Retrieves a list of buildings with their meter and other data stored in a multidimensional array.
-   * Very similiar to 
+   * Very similiar to populateDB(), except this method stores all the data in a buffer which is returned at the end of the routine.
    */
-  public function getBuildings() {
+  public function getBuildings($org = array()) {
     $url = 'https://api.buildingos.com/buildings?per_page=100';
-    $return = array();
+    $buffer = array();
     $i = 0;
     $j = 0;
+    $not_empty = !empty($org);
     while (true) {
       $result = $this->makeCall($url);
       if ($result === false) {
-        return $return;
+        throw new Exception('Failed to open building URL ' . $url);
+        return false;
       }
       $json = json_decode($result, true);
       foreach ($json['data'] as $building) {
-        $return[$i] = array(
-          'id' => $building['id'],
-          'name' => $building['name'],
-          'building_type' => $building['buildingType']['displayName'],
-          'address' => "{$building['address']} {$building['postalCode']}",
-          'loc' => "{$building['location']['lat']},{$building['location']['lon']}",
-          'area' => (empty($building['area'])) ? '' : $building['area'],
-          'occupancy' => $building['occupancy'],
-          'numFloors' => $building['numFloors'],
-          'image' => $building['image'],
-          'organization' => $building['organization'],
-          'meters' => array()
+        if ($not_empty && !in_array($building['organization'], $org)) {
+          continue;
+        }
+        $buffer[$i] = array( // make an array that can be fed directly into a query 
+          ':bos_id' => $building['id'],
+          ':name' => $building['name'],
+          ':building_type' => $building['buildingType']['displayName'],
+          ':address' => "{$building['address']} {$building['postalCode']}",
+          ':loc' => "{$building['location']['lat']},{$building['location']['lon']}",
+          ':area' => (empty($building['area'])) ? '' : $building['area'],
+          ':occupancy' => $building['occupancy'],
+          ':numFloors' => $building['numFloors'],
+          ':image' => $building['image'],
+          ':organization' => $building['organization'],
+          ':user_id' => $this->user_id,
+          'meters' => array() // remove if feeding directly into query
         );
+        echo $building['name'] . "\n";
         foreach ($building['meters'] as $meter) {
+          $meter_result = $this->makeCall($meter['url']);
+          if ($result === false) {
+            throw new Exception('Failed to open meter URL ' . $meter['url']);
+            return false;
+          }
+          $meter_json = json_decode($meter_result, true);
           $arr = array(
-            'name' => $meter['name'],
-            'url' => $meter['url'],
-            'displayName' => $meter['displayName']
+            ':bos_uuid' => $meter_json['data']['uuid'],
+            ':building_id' => null, // need to fill this in later if inserting into db
+            ':source' => 'buildingos',
+            ':scope' => $meter_json['data']['scope']['displayName'],
+            ':name' => $meter_json['data']['displayName'],
+            ':url' => $meter_json['data']['url'],
+            ':building_url' => $meter_json['data']['building'],
+            ':units' => $meter_json['data']['displayUnit']['displayName'],
+            ':user_id' => $this->user_id
           );
-          $return[$i]['meters'][$j] = $arr;
+          $buffer[$i]['meters'][$j] = $arr;
           $j++;
         }
         $i++;
       }
       if ($json['links']['next'] == "") { // No other data
-        return $return;
+        return $buffer;
       }
       else { // Other data to fetch
         $url = $json['links']['next'];
@@ -191,16 +211,37 @@ class BuildingOS {
   }
 
   /**
-   * Fill the db with buildings and meters
-   * @param $org is the organization URL to restrict the collected buildings/meters to
+   * Returns all the organizations for a buildingos account.
+   * Can feed directly into $this->getBuildings($this->getOrganizations())
    */
-  public function populateDB($org = null) {
+  public function getOrganizations() {
+    $buffer = array();
+    $json = json_decode($this->makeCall('https://api.buildingos.com/organizations'), true);
+    if ($json === false) {
+      return false;
+    }
+    foreach ($json['data'] as $organization) {
+      $buffer[$organization['name']] = $organization['url'];
+    }
+    return $buffer;
+  }
+
+  /*
+    ====== METHODS TO UPDATE THE DATABASE WITH BUILDING/METER DATA ======
+   */
+
+  /**
+   * Fills an empty db with buildings and meters
+   * @param $org is the organization URL to restrict the collected buildings/meters to. If empty, buildings/meters from all organizations associated with the account is created
+   */
+  public function populateDB($org = array()) {
     $url = 'https://api.buildingos.com/buildings?per_page=100';
     while (true) {
       $json = json_decode($this->makeCall($url), true);
+      $not_empty = !empty($org);
       foreach ($json['data'] as $building) {
-        // example $org = 'https://api.buildingos.com/organizations/1249'
-        if ($org !== null && $building['organization'] !== $org) {
+        // example $org = array('https://api.buildingos.com/organizations/1249')
+        if ($not_empty && !in_array($building['organization'], $org)) {
           continue;
         }
         $area = (int) (empty($building['area'])) ? 0 : $building['area'];
@@ -236,7 +277,7 @@ class BuildingOS {
             $meter_json['data']['displayName'],
             $meter_json['data']['url'],
             $meter_json['data']['building'],
-            $meter_json['data']['displayUnits']['displayName'],
+            $meter_json['data']['displayUnit']['displayName'],
             $this->user_id
           ));
         }
@@ -253,7 +294,7 @@ class BuildingOS {
   /**
    * Helper for updateMeter()
    */
-  public function pickAmount($res) {
+  private function pickAmount($res) {
     switch ($res) {
       case 'live':
         return strtotime('-2 hours');
@@ -271,7 +312,7 @@ class BuildingOS {
   /**
    * Helper for updateMeter()
    */
-  public function pickCol($res) {
+  private function pickCol($res) {
     switch ($res) {
       case 'live':
         return 'live_last_updated';
@@ -289,10 +330,8 @@ class BuildingOS {
   /**
    * Helper for updateMeter()
    * the amounts returned are kind of arbitrary but are meant to move meters back in the queue of what's being updated by updateMeter() so they don't hold up everything if updateMeter() keeps failing for some reason. note that if updateMeter() does finish, it pushes the meter to the end of the queue by updating the last_updated_col to the current time otherwise the $last_updated_col remains the current time minus the amount this function returns
-   * @param  [type] $res [description]
-   * @return [type]      [description]
    */
-  public function move_back_amount($res) {
+  private function move_back_amount($res) {
     switch ($res) {
       case 'live':
         return 120;
@@ -387,7 +426,6 @@ class BuildingOS {
     return true;
   }
 
-  // These methods update the database with building/meter meta data from the API
   /**
    * Retrieves the meter scope for each meter in the db and updates it.
    */
@@ -419,10 +457,63 @@ class BuildingOS {
 
   /**
    * Adds buildings from the BuildingOS API that aren't already in the database.
-   * Optionally delete buildings that no longer exist in the API
+   * Optionally delete buildings/meters that no longer exist in the API
    */
-  // public function syncBuildings($delete_not_found = false) {}
-  // public function syncMeters($delete_not_found = false) {}
+  public function syncBuildings($org = array(), $delete_not_found = false) {
+    // Get a list of all buildings to compare against what's in db
+    $buildings = $this->getBuildings($org);
+    if ($buildings !== false) {
+      if ($delete_not_found) {
+        $bos_ids = array_column($buildings, ':bos_id');
+        foreach ($this->db->query('SELECT id, bos_id FROM buildings') as $building) {
+          if (!in_array($building['bos_id'], $bos_ids)) { // NEED TO TEST THIS STILL
+            $stmt = $this->db->prepare('DELETE FROM buildings WHERE bos_id = ?');
+            $stmt->execute(array($building['bos_id']));
+            $stmt = $this->db->prepare('DELETE FROM meters WHERE building_id = ?');
+            $stmt->execute(array($building['id']));
+          }
+        }
+      }
+      foreach ($buildings as $building) {
+        $stmt = $this->db->prepare('SELECT COUNT(*) FROM buildings WHERE bos_id = ?');
+        $stmt->execute(array($building[':bos_id']));
+        if ($stmt->fetchColumn() === '0') { // building doesnt exist in db
+          $stmt = $this->db->prepare('INSERT INTO buildings (bos_id, name, building_type, address, loc, area, occupancy, floors, img, org_url, user_id) VALUES (:bos_id, :name, :building_type, :address, :loc, :area, :numFloors, :image, :organization, :user_id)');
+          $tmp = array();
+          foreach (array(':bos_id', ':name', ':building_type', ':address', ':loc', ':area', ':numFloors', ':image', ':organization', ':user_id') as $param) {
+            $tmp[$param] = $building[$param];
+          }
+          $stmt->execute($tmp);
+          $building_id = $this->db->lastInsertId();
+        } else { // building does exist, just fetch id
+          $stmt = $this->db->prepare('SELECT id FROM buildings WHERE bos_id = ?');
+          $stmt->execute(array($building[':bos_id']));
+          $building_id = $this->db->fetchColumn();
+        }
+        // $building is now guaranteed to be a row in the db
+        if ($delete_not_found) {
+          $bos_uuids = array_column($buildings['meters'], ':bos_uuid');
+          foreach ($this->db->query('SELECT bos_uuid FROM meters WHERE building_id = ' . $building_id) as $meter) {
+            if (!in_array($meter['bos_uuid'], $bos_uuids)) { // NEED TO TEST THIS STILL
+              $stmt = $this->db->prepare('DELETE FROM meters WHERE bos_uuid = ?');
+              $stmt->execute(array($meter[':bos_uuid']));
+            }
+          }
+        }
+        // make sure all the meters are there
+        foreach ($building['meters'] as $meter) {
+          $stmt = $this->db->prepare('SELECT COUNT(*) FROM meters WHERE url = ?');
+          $stmt->execute(array($meter[':url']));
+          if ($stmt->fetchColumn() === '0') { // meter is not in db
+            $meter[':building_id'] = $building_id;
+            $stmt = $this->db->prepare('INSERT INTO meters (bos_uuid, building_id, source, scope, name, url, building_url, units, user_id) VALUES (:bos_uuid, :building_id, :source, :scope, :name, :url, :building_url, :units, :user_id)');
+            $stmt->execute($meter);
+          }
+        }
+      }
+    }
+  }
+  public function syncMeters($building_id, $delete_not_found = false) {}
 
   /**
    * This used to be the mechanism of retrieving data from the BOS API
