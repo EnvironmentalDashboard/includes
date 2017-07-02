@@ -494,7 +494,7 @@ class BuildingOS {
         } else { // building does exist, just fetch id
           $stmt = $this->db->prepare('SELECT id FROM buildings WHERE bos_id = ?');
           $stmt->execute(array($building[':bos_id']));
-          $building_id = $this->db->fetchColumn();
+          $building_id = $stmt->fetchColumn();
         }
         // $building is now guaranteed to be a row in the db
         if ($delete_not_found) { // delete meters not found in $buildings['meters']
