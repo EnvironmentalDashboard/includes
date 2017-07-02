@@ -69,6 +69,7 @@ class BuildingOS {
   /*
     ====== METHODS TO RETRIEVE DATA FROM THE API ======
    */
+  
 
   /**
    * Makes a call to the given URL with the 'Authorization: Bearer $token' header.
@@ -144,7 +145,7 @@ class BuildingOS {
 
   /**
    * Retrieves a list of buildings with their meter and other data stored in a multidimensional array.
-   * Very similiar to populateDB(), except this method stores all the data in a buffer which is returned at the end of the routine.
+   * @param $org array of organization URLs to restrict data collection to. If empty, buildings for all orgs will be collected
    */
   public function getBuildings($org = array()) {
     $url = 'https://api.buildingos.com/buildings?per_page=100';
@@ -226,70 +227,11 @@ class BuildingOS {
     return $buffer;
   }
 
+
   /*
     ====== METHODS TO UPDATE THE DATABASE WITH BUILDING/METER DATA ======
    */
-
-  /**
-   * Fills an empty db with buildings and meters
-   * @param $org is the organization URL to restrict the collected buildings/meters to. If empty, buildings/meters from all organizations associated with the account is created
-   */
-  public function populateDB($org = array()) {
-    $url = 'https://api.buildingos.com/buildings?per_page=100';
-    while (true) {
-      $json = json_decode($this->makeCall($url), true);
-      $not_empty = !empty($org);
-      foreach ($json['data'] as $building) {
-        // example $org = array('https://api.buildingos.com/organizations/1249')
-        if ($not_empty && !in_array($building['organization'], $org)) {
-          continue;
-        }
-        $area = (int) (empty($building['area'])) ? 0 : $building['area'];
-        if ($this->db->query('SELECT COUNT(*) FROM buildings WHERE bos_id = \''.$building['id'].'\'')->fetch()['COUNT(*)'] > 0) {
-          continue;
-        }
-        $stmt = $this->db->prepare('INSERT INTO buildings (bos_id, name, building_type, address, loc, area, occupancy, floors, img, org_url, user_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)');
-        $stmt->execute(array(
-          $building['id'],
-          $building['name'],
-          $building['buildingType']['displayName'],
-          "{$building['address']} {$building['postalCode']}",
-          "{$building['location']['lat']},{$building['location']['lon']}",
-          $area,
-          $building['occupancy'],
-          $building['numFloors'],
-          $building['image'],
-          $building['organization'],
-          $this->user_id
-        ));
-        $last_id = $this->db->lastInsertId();
-        foreach ($building['meters'] as $meter) {
-          $meter_json = json_decode($this->makeCall($meter['url']), true);
-          if ($this->db->query('SELECT COUNT(*) FROM meters WHERE bos_uuid = \''.$meter_json['data']['uuid'].'\'')->fetch()['COUNT(*)'] > 0) {
-            continue;
-          }
-          $stmt = $this->db->prepare('INSERT INTO meters (bos_uuid, building_id, source, scope, name, url, building_url, units, user_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)');
-          $stmt->execute(array(
-            $meter_json['data']['uuid'],
-            $last_id,
-            'buildingos',
-            $meter_json['data']['scope']['displayName'],
-            $meter_json['data']['displayName'],
-            $meter_json['data']['url'],
-            $meter_json['data']['building'],
-            $meter_json['data']['displayUnit']['displayName'],
-            $this->user_id
-          ));
-        }
-      }
-      if ($json['links']['next'] == "") { // No other data
-        break;
-      }
-      else { // Other data to fetch
-        $url = $json['links']['next'];
-      }
-    }
-  }
+  
 
   /**
    * Helper for updateMeter()
@@ -348,7 +290,6 @@ class BuildingOS {
 
   /**
    * Used by daemons to update individual meters
-   * 
    */
   public function updateMeter($meter_id, $meter_uuid, $meter_url, $res, $meterClass, $debug = false) {
     if ($debug) {
@@ -409,7 +350,7 @@ class BuildingOS {
         $stmt = $this->db->prepare('UPDATE meters SET current = ? WHERE id = ? LIMIT 1');
         $stmt->execute(array($last_value, $meter_id));
         // Update relative_value records
-        $stmt = $this->db->prepare('SELECT DISTINCT grouping FROM relative_values WHERE meter_uuid = ? AND grouping != \'[]\' AND grouping IS NOT NULL AND permission IS NOT NULL');
+        $stmt = $this->db->prepare('SELECT DISTINCT grouping FROM relative_values WHERE meter_uuid = ? AND grouping != \'[]\' AND grouping != \'\' AND grouping IS NOT NULL AND permission IS NOT NULL');
         // SELECT id, grouping FROM relative_values WHERE meter_uuid = ? AND grouping IS NOT NULL
         $stmt->execute(array($meter_uuid));
         foreach ($stmt->fetchAll() as $rv_row) {
@@ -458,6 +399,8 @@ class BuildingOS {
   /**
    * Adds buildings from the BuildingOS API that aren't already in the database.
    * Optionally delete buildings/meters that no longer exist in the API
+   * @param  $org fed into getBuildings()
+   * @param  $delete_not_found delete buildings/meters that exist in the database but not the API
    */
   public function syncBuildings($org = array(), $delete_not_found = false) {
     // Get a list of all buildings to compare against what's in db
@@ -526,7 +469,6 @@ class BuildingOS {
       }
     }
   }
-  // public function syncMeters($building_id, $delete_not_found = false) {}
 
   /**
    * This used to be the mechanism of retrieving data from the BOS API
