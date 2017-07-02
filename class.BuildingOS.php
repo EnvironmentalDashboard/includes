@@ -177,7 +177,6 @@ class BuildingOS {
           ':user_id' => $this->user_id,
           'meters' => array() // remove if feeding directly into query
         );
-        echo $building['name'] . "\n";
         foreach ($building['meters'] as $meter) {
           $meter_result = $this->makeCall($meter['url']);
           if ($result === false) {
@@ -463,13 +462,20 @@ class BuildingOS {
     // Get a list of all buildings to compare against what's in db
     $buildings = $this->getBuildings($org);
     if ($buildings !== false) {
-      if ($delete_not_found) {
+      if ($delete_not_found) { // Delete buildings in db not found in $buildings
         $bos_ids = array_column($buildings, ':bos_id');
-        foreach ($this->db->query('SELECT id, bos_id FROM buildings') as $building) {
-          if (!in_array($building['bos_id'], $bos_ids)) { // NEED TO TEST THIS STILL
+        foreach ($this->db->query('SELECT id, bos_id FROM buildings WHERE user_id = '.intval($this->user_id)) as $building) {
+          if (!in_array($building['bos_id'], $bos_ids)) {
             $stmt = $this->db->prepare('DELETE FROM buildings WHERE bos_id = ?');
             $stmt->execute(array($building['bos_id']));
+            // also delete meters that belong to those buildings
             $stmt = $this->db->prepare('DELETE FROM meters WHERE building_id = ?');
+            $stmt->execute(array($building['id']));
+            // also delete relative_value records that belong to those meters
+            $stmt = $this->db->prepare('DELETE FROM relative_values WHERE meter_uuid IN (SELECT bos_uuid FROM meters WHERE building_id = ?)');
+            $stmt->execute(array($building['id']));
+            // also delete data from meter_data table
+            $stmt = $this->db->prepare('DELETE FROM meter_data WHERE meter_id IN (SELECT id FROM meters WHERE building_id = ?)');
             $stmt->execute(array($building['id']));
           }
         }
@@ -491,12 +497,16 @@ class BuildingOS {
           $building_id = $this->db->fetchColumn();
         }
         // $building is now guaranteed to be a row in the db
-        if ($delete_not_found) {
+        if ($delete_not_found) { // delete meters not found in $buildings['meters']
           $bos_uuids = array_column($buildings['meters'], ':bos_uuid');
-          foreach ($this->db->query('SELECT bos_uuid FROM meters WHERE building_id = ' . $building_id) as $meter) {
-            if (!in_array($meter['bos_uuid'], $bos_uuids)) { // NEED TO TEST THIS STILL
+          foreach ($this->db->query('SELECT id, bos_uuid FROM meters WHERE building_id = ' . intval($building_id)) as $meter) {
+            if (!in_array($meter['bos_uuid'], $bos_uuids)) {
               $stmt = $this->db->prepare('DELETE FROM meters WHERE bos_uuid = ?');
-              $stmt->execute(array($meter[':bos_uuid']));
+              $stmt->execute(array($meter['bos_uuid']));
+              $stmt = $this->db->prepare('DELETE FROM relative_values WHERE meter_uuid = ?');
+              $stmt->execute(array($meter['bos_uuid']));
+              $stmt = $this->db->prepare('DELETE FROM meter_data WHERE meter_id = ?');
+              $stmt->execute(array($meter['id']));
             }
           }
         }
@@ -513,7 +523,7 @@ class BuildingOS {
       }
     }
   }
-  public function syncMeters($building_id, $delete_not_found = false) {}
+  // public function syncMeters($building_id, $delete_not_found = false) {}
 
   /**
    * This used to be the mechanism of retrieving data from the BOS API
