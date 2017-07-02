@@ -163,13 +163,14 @@ class BuildingOS {
         if ($not_empty && !in_array($building['organization'], $org)) {
           continue;
         }
+        echo "Fetched building: {$building['name']}\n";
         $buffer[$i] = array( // make an array that can be fed directly into a query 
           ':bos_id' => $building['id'],
           ':name' => $building['name'],
           ':building_type' => $building['buildingType']['displayName'],
           ':address' => "{$building['address']} {$building['postalCode']}",
           ':loc' => "{$building['location']['lat']},{$building['location']['lon']}",
-          ':area' => (empty($building['area'])) ? '' : $building['area'],
+          ':area' => ($building['area'] == '') ? 0 : $building['area'],
           ':occupancy' => $building['occupancy'],
           ':numFloors' => $building['numFloors'],
           ':image' => $building['image'],
@@ -461,6 +462,7 @@ class BuildingOS {
   public function syncBuildings($org = array(), $delete_not_found = false) {
     // Get a list of all buildings to compare against what's in db
     $buildings = $this->getBuildings($org);
+    echo "Fetched all buildings\n";
     if ($buildings !== false) {
       if ($delete_not_found) { // Delete buildings in db not found in $buildings
         $bos_ids = array_column($buildings, ':bos_id');
@@ -480,16 +482,17 @@ class BuildingOS {
           }
         }
       }
+      $counter = 0;
       foreach ($buildings as $building) {
+        echo "Processed building " . (++$counter) . " out of " . count($buildings) . "\n";
         $stmt = $this->db->prepare('SELECT COUNT(*) FROM buildings WHERE bos_id = ?');
         $stmt->execute(array($building[':bos_id']));
         if ($stmt->fetchColumn() === '0') { // building doesnt exist in db
-          $stmt = $this->db->prepare('INSERT INTO buildings (bos_id, name, building_type, address, loc, area, occupancy, floors, img, org_url, user_id) VALUES (:bos_id, :name, :building_type, :address, :loc, :area, :numFloors, :image, :organization, :user_id)');
-          $tmp = array();
-          foreach (array(':bos_id', ':name', ':building_type', ':address', ':loc', ':area', ':numFloors', ':image', ':organization', ':user_id') as $param) {
-            $tmp[$param] = $building[$param];
+          $stmt = $this->db->prepare('INSERT INTO buildings (bos_id, name, building_type, address, loc, area, occupancy, floors, img, org_url, user_id) VALUES (:bos_id, :name, :building_type, :address, :loc, :area, :occupancy, :numFloors, :image, :organization, :user_id)');
+          foreach (array(':bos_id', ':name', ':building_type', ':address', ':loc', ':area', ':occupancy', ':numFloors', ':image', ':organization', ':user_id') as $param) {
+            $stmt->bindValue($param, $building[$param]);
           }
-          $stmt->execute($tmp);
+          $stmt->execute();
           $building_id = $this->db->lastInsertId();
         } else { // building does exist, just fetch id
           $stmt = $this->db->prepare('SELECT id FROM buildings WHERE bos_id = ?');
@@ -498,7 +501,7 @@ class BuildingOS {
         }
         // $building is now guaranteed to be a row in the db
         if ($delete_not_found) { // delete meters not found in $buildings['meters']
-          $bos_uuids = array_column($buildings['meters'], ':bos_uuid');
+          $bos_uuids = array_column($building['meters'], ':bos_uuid');
           foreach ($this->db->query('SELECT id, bos_uuid FROM meters WHERE building_id = ' . intval($building_id)) as $meter) {
             if (!in_array($meter['bos_uuid'], $bos_uuids)) {
               $stmt = $this->db->prepare('DELETE FROM meters WHERE bos_uuid = ?');
