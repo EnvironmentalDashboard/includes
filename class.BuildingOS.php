@@ -14,22 +14,24 @@ ini_set('display_errors', 'On');
 class BuildingOS {
 
   /**
+   * You have to instantiate this class with the org id of the meters you want
+   * 
    * @param $db The database connection
-   * @param $user_id ID of user associated with meters
+   * @param $org_id ID of org associated with meters
    *
    * Sets the token for the class.
    */
-  public function __construct($db, $user_id = 1) {
+  public function __construct($db, $org_id = 1) {
     $this->db = $db;
-    if ($user_id == 0) { // test account
+    if ($org_id == 0) { // test account
       $this->token = 0;
-      $this->user_id = 0;
+      $this->org_id = 0;
       return;
     }
-    $stmt = $db->prepare('SELECT api_id FROM users WHERE id = ?');
-    $stmt->execute(array($user_id));
+    $stmt = $db->prepare('SELECT api_id FROM orgs WHERE id = ?');
+    $stmt->execute(array($org_id));
     $api_id = $stmt->fetchColumn();
-    $this->user_id = $user_id;
+    $this->org_id = $org_id;
     $results = $db->query("SELECT token, token_updated FROM api WHERE id = {$api_id}");
     $arr = $results->fetch();
     if ($arr['token_updated'] + 3595 > time()) { // 3595 = 1 hour - 5 seconds to be safe (according to API docs, token expires after 1 hour)
@@ -82,7 +84,7 @@ class BuildingOS {
     if ($debug) {
       echo "URL: {$url}\n\n";
     }
-    if ($this->user_id === 0) {
+    if ($this->org_id === 0) {
       $options = array(
         'http' => array(
           'method' => 'GET',
@@ -165,6 +167,7 @@ class BuildingOS {
           continue;
         }
         echo "Fetched building: {$building['name']}\n";
+        $org_id = $this->orgURLtoID($building['organization']);
         $buffer[$i] = array( // make an array that can be fed directly into a query 
           ':bos_id' => $building['id'],
           ':name' => $building['name'],
@@ -175,8 +178,7 @@ class BuildingOS {
           ':occupancy' => $building['occupancy'],
           ':numFloors' => $building['numFloors'],
           ':image' => $building['image'],
-          ':organization' => $building['organization'],
-          ':user_id' => $this->user_id,
+          ':org_id' => $org_id,
           'meters' => array() // remove if feeding directly into query
         );
         foreach ($building['meters'] as $meter) {
@@ -195,7 +197,7 @@ class BuildingOS {
             ':url' => $meter_json['data']['url'],
             ':building_url' => $meter_json['data']['building'],
             ':units' => $meter_json['data']['displayUnit']['displayName'],
-            ':user_id' => $this->user_id
+            ':org_id' => $org_id
           );
           $buffer[$i]['meters'][$j] = $arr;
           $j++;
@@ -225,6 +227,11 @@ class BuildingOS {
       $buffer[$organization['name']] = $organization['url'];
     }
     return $buffer;
+  }
+
+  private function orgURLtoID($url) {
+    $result = explode('/', $url);
+    return intval($result[count($result)-1]);
   }
 
 
@@ -371,7 +378,7 @@ class BuildingOS {
    * Retrieves the meter scope for each meter in the db and updates it.
    */
   public function updateMeterScope() {
-    foreach ($this->db->query("SELECT url FROM meters WHERE scope = '' AND source = 'buildingos' AND user_id = {$this->user_id}") as $meter) {
+    foreach ($this->db->query("SELECT url FROM meters WHERE scope = '' AND source = 'buildingos' AND org_id = {$this->org_id}") as $meter) {
       $contents = $this->makeCall($meter['url']);
       if ($contents === false) {
         continue;
@@ -384,7 +391,7 @@ class BuildingOS {
   }
 
   public function updateMeterUnits() {
-    foreach ($this->db->query("SELECT url FROM meters WHERE units = '' AND source = 'buildingos' AND user_id = {$this->user_id}") as $meter) {
+    foreach ($this->db->query("SELECT url FROM meters WHERE units = '' AND source = 'buildingos' AND org_id = {$this->org_id}") as $meter) {
       $contents = $this->makeCall($meter['url']);
       if ($contents === false) {
         continue;
@@ -409,7 +416,7 @@ class BuildingOS {
     if ($buildings !== false) {
       if ($delete_not_found) { // Delete buildings in db not found in $buildings
         $bos_ids = array_column($buildings, ':bos_id');
-        foreach ($this->db->query('SELECT id, bos_id FROM buildings WHERE user_id = '.intval($this->user_id)) as $building) {
+        foreach ($this->db->query('SELECT id, bos_id FROM buildings WHERE org_id = '.intval($this->org_id)) as $building) {
           if (!in_array($building['bos_id'], $bos_ids)) {
             $stmt = $this->db->prepare('DELETE FROM buildings WHERE bos_id = ?');
             $stmt->execute(array($building['bos_id']));
@@ -427,12 +434,12 @@ class BuildingOS {
       }
       $counter = 0;
       foreach ($buildings as $building) {
-        echo "Processed building " . (++$counter) . " out of " . count($buildings) . "\n";
+        echo "Processing building " . (++$counter) . " out of " . count($buildings) . "\n";
         $stmt = $this->db->prepare('SELECT COUNT(*) FROM buildings WHERE bos_id = ?');
         $stmt->execute(array($building[':bos_id']));
         if ($stmt->fetchColumn() === '0') { // building doesnt exist in db
-          $stmt = $this->db->prepare('INSERT INTO buildings (bos_id, name, building_type, address, loc, area, occupancy, floors, img, org_url, user_id) VALUES (:bos_id, :name, :building_type, :address, :loc, :area, :occupancy, :numFloors, :image, :organization, :user_id)');
-          foreach (array(':bos_id', ':name', ':building_type', ':address', ':loc', ':area', ':occupancy', ':numFloors', ':image', ':organization', ':user_id') as $param) {
+          $stmt = $this->db->prepare('INSERT INTO buildings (bos_id, name, building_type, address, loc, area, occupancy, floors, img, org_id) VALUES (:bos_id, :name, :building_type, :address, :loc, :area, :occupancy, :numFloors, :image, :org_id)');
+          foreach (array(':bos_id', ':name', ':building_type', ':address', ':loc', ':area', ':occupancy', ':numFloors', ':image', ':org_id') as $param) {
             $stmt->bindValue($param, $building[$param]);
           }
           $stmt->execute();
@@ -462,7 +469,7 @@ class BuildingOS {
           $stmt->execute(array($meter[':url']));
           if ($stmt->fetchColumn() === '0') { // meter is not in db
             $meter[':building_id'] = $building_id;
-            $stmt = $this->db->prepare('INSERT INTO meters (bos_uuid, building_id, source, scope, name, url, building_url, units, user_id) VALUES (:bos_uuid, :building_id, :source, :scope, :name, :url, :building_url, :units, :user_id)');
+            $stmt = $this->db->prepare('INSERT INTO meters (bos_uuid, building_id, source, scope, name, url, building_url, units, org_id) VALUES (:bos_uuid, :building_id, :source, :scope, :name, :url, :building_url, :units, :org_id)');
             $stmt->execute($meter);
           }
         }
@@ -472,7 +479,7 @@ class BuildingOS {
 
   /**
    * This used to be the mechanism of retrieving data from the BOS API
-   * It fetches data for all the meters associated with the user_id used to instantiate the class
+   * It fetches data for all the meters associated with the org_id used to instantiate the class
    * The crons used to be:
    */
   // */2 * * * * /var/www/html/oberlin/scripts/jobs/minute.sh
@@ -485,10 +492,10 @@ class BuildingOS {
     $last_updated_col = $this->pickCol($res);
     $time = time();
     // Get all the meters belonging to the user id used to instantiate the class
-    $sql = "SELECT id, bos_uuid, url FROM meters WHERE (gauges_using > 0 OR for_orb > 0 OR timeseries_using > 0) OR bos_uuid IN (SELECT DISTINCT meter_uuid FROM relative_values WHERE permission = 'orb_server') AND user_id = ? ORDER BY {$last_updated_col} ASC";
+    $sql = "SELECT id, bos_uuid, url FROM meters WHERE (gauges_using > 0 OR for_orb > 0 OR timeseries_using > 0) OR bos_uuid IN (SELECT DISTINCT meter_uuid FROM relative_values WHERE permission = 'orb_server') AND org_id = ? ORDER BY {$last_updated_col} ASC";
     $meters = $this->db->prepare($sql);
     echo "{$sql}\n\n";
-    $meters->execute(array($this->user_id));
+    $meters->execute(array($this->org_id));
     while ($row = $meters->fetch()) {
       echo "Fetching meter #{$row['id']}\n";
       // Check to see what the last recorded value is

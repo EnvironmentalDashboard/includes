@@ -180,6 +180,7 @@ class Meter {
         return true;
       }
     }
+    return false;
   }
 
   /**
