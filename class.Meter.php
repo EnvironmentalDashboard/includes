@@ -92,17 +92,27 @@ class Meter {
    * @param  $current
    */
   public function updateRelativeValueOfMeter($meter_id, $grouping, $current = null, $debug = false) {
-    if ($current === null) {
-      $stmt = $this->db->prepare('SELECT current FROM meters WHERE id = ?');
-      $stmt->execute(array($meter_id));
-      $current = $stmt->fetchColumn();
-    }
     if ($debug) {
       $log = array('Grouping' => $grouping);
     }
     $day_of_week = date('w') + 1; // https://dev.mysql.com/doc/refman/5.5/en/date-and-time-functions.html#function_dayofweek
     foreach (json_decode($grouping, true) as $group) {
       if (in_array($day_of_week, $group['days'])) {
+        // Either calculate the current value based on the average of the last n minutes or the last non null point
+        if ($current === null) {
+          if (array_key_exists('minsAveraged', $group)) {
+            $stmt = $this->db->prepare('SELECT AVG(value) FROM meter_data WHERE meter_id = ? AND resolution = \'live\' AND recorded >= ? AND value IS NOT NULL');
+            $stmt->execute(array( $meter_id, time()-(intval($group['minsAveraged'])*60) ));
+            $current = floatval($stmt->fetchColumn());
+          }
+          // if minsAveraged doesnt exist or it does but all the data in the past n minutes is null
+          if ($current === null || $current === false) {
+            // current col is guaranteed not to be null
+            $stmt = $this->db->prepare('SELECT current FROM meters WHERE id = ?');
+            $stmt->execute(array($meter_id));
+            $current = floatval($stmt->fetchColumn());
+          }
+        }
         if (array_key_exists('npoints', $group)) {
           $amount = intval($group['npoints']);
           $days = implode(',', array_map('intval', $group['days'])); // prevent sql injection with intval as we're concatenating directly into query
@@ -180,7 +190,7 @@ class Meter {
         return true;
       }
     }
-    return false;
+    return false; // relative value json is missing current day
   }
 
   /**

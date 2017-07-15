@@ -17,21 +17,18 @@ class BuildingOS {
    * You have to instantiate this class with the org id of the meters you want
    * 
    * @param $db The database connection
-   * @param $org_id ID of org associated with meters
+   * @param $api_id id of api credentials able to use
    *
    * Sets the token for the class.
    */
-  public function __construct($db, $org_id = 1) {
+  public function __construct($db, $api_id = 1) {
     $this->db = $db;
-    if ($org_id == 0) { // test account
+    if ($api_id == 0) { // test account
       $this->token = 0;
-      $this->org_id = 0;
+      $this->api_id = 0;
       return;
     }
-    $stmt = $db->prepare('SELECT api_id FROM orgs WHERE id = ?');
-    $stmt->execute(array($org_id));
-    $api_id = $stmt->fetchColumn();
-    $this->org_id = $org_id;
+    $this->api_id = $api_id;
     $results = $db->query("SELECT token, token_updated FROM api WHERE id = {$api_id}");
     $arr = $results->fetch();
     if ($arr['token_updated'] + 3595 > time()) { // 3595 = 1 hour - 5 seconds to be safe (according to API docs, token expires after 1 hour)
@@ -84,7 +81,7 @@ class BuildingOS {
     if ($debug) {
       echo "URL: {$url}\n\n";
     }
-    if ($this->org_id === 0) {
+    if ($this->api_id === 0) {
       $options = array(
         'http' => array(
           'method' => 'GET',
@@ -378,7 +375,7 @@ class BuildingOS {
    * Retrieves the meter scope for each meter in the db and updates it.
    */
   public function updateMeterScope() {
-    foreach ($this->db->query("SELECT url FROM meters WHERE scope = '' AND source = 'buildingos' AND org_id = {$this->org_id}") as $meter) {
+    foreach ($this->db->query("SELECT url FROM meters WHERE scope = '' AND source = 'buildingos' AND org_id IN (SELECT id FROM orgs WHERE api_id = {$this->api_id})") as $meter) {
       $contents = $this->makeCall($meter['url']);
       if ($contents === false) {
         continue;
@@ -391,7 +388,7 @@ class BuildingOS {
   }
 
   public function updateMeterUnits() {
-    foreach ($this->db->query("SELECT url FROM meters WHERE units = '' AND source = 'buildingos' AND org_id = {$this->org_id}") as $meter) {
+    foreach ($this->db->query("SELECT url FROM meters WHERE units = '' AND source = 'buildingos' AND org_id IN (SELECT id FROM orgs WHERE api_id = {$this->api_id})") as $meter) {
       $contents = $this->makeCall($meter['url']);
       if ($contents === false) {
         continue;
@@ -409,14 +406,14 @@ class BuildingOS {
    * @param  $org fed into getBuildings()
    * @param  $delete_not_found delete buildings/meters that exist in the database but not the API
    */
-  public function syncBuildings($org = array(), $delete_not_found = false) {
+  public function syncBuildings($org, $delete_not_found = false) {
     // Get a list of all buildings to compare against what's in db
-    $buildings = $this->getBuildings($org);
+    $buildings = $this->getBuildings(array($org));
     echo "Fetched all buildings\n";
     if ($buildings !== false) {
       if ($delete_not_found) { // Delete buildings in db not found in $buildings
         $bos_ids = array_column($buildings, ':bos_id');
-        foreach ($this->db->query('SELECT id, bos_id FROM buildings WHERE org_id = '.intval($this->org_id)) as $building) {
+        foreach ($this->db->query("SELECT id, bos_id FROM buildings WHERE org_id IN (SELECT id FROM orgs WHERE url = '{$org}')") as $building) {
           if (!in_array($building['bos_id'], $bos_ids)) {
             $stmt = $this->db->prepare('DELETE FROM buildings WHERE bos_id = ?');
             $stmt->execute(array($building['bos_id']));
