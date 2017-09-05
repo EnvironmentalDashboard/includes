@@ -23,6 +23,7 @@ class TimeSeries extends Meter {
     parent::__construct($db);
     if ($res === 'daily') { // dont collect daily data (although it is avail. from api) so have to calc it
       $this->data = ($alt_data === null) ? parent::getDailyData($meter_id, $start, $end) : $alt_data;
+      // ^ what the fuck is this?
     }
     else {
       $this->data = ($alt_data === null) ? parent::getDataFromTo($meter_id, $start, $end, $res) : $alt_data;
@@ -306,6 +307,21 @@ class TimeSeries extends Meter {
   }
 
   /**
+   * Copied from https://stackoverflow.com/a/4014414/2624391
+   */
+  private function is_array_empty($input) {
+  $result = true;
+  if (is_array($input) && count($input) > 0) {
+    foreach ($input as $val) {
+      $result = $result && $this->is_array_empty($val);
+    }
+  } else {
+    $result = empty($input);
+  }
+  return $result;
+}
+
+  /**
    * Makes all the timescales have a uniform resolution
    * $arr array of data
    * $result_size size of returned array
@@ -313,6 +329,9 @@ class TimeSeries extends Meter {
   private function change_resolution($data, $result_size) {
     if (count($data) > $result_size) {
       throw new Exception('Size of $data array must be less than $result_size');
+    }
+    if ($this->is_array_empty($data)) {
+      throw new Exception('$data is empty');
     }
     $return = array();
     for ($i = 0; $i < $result_size; $i++) {

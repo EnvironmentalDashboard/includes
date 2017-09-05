@@ -12,7 +12,7 @@ ini_set('display_errors', 'On');
  * @author Tim Robert-Fitzgerald
  */
 class BuildingOS {
-
+  
   /**
    * You have to instantiate this class with the org id of the meters you want
    * 
@@ -103,13 +103,16 @@ class BuildingOS {
     $context = stream_context_create($options);
     $data = file_get_contents($url, false, $context);
     if ($data === false) { // If the API didnt return a proper response
+      if ($debug) {
+        print_r($http_response_header);
+      }
       if ($http_response_header[0] === 'HTTP/1.1 429 TOO MANY REQUESTS') {
         // If it was because the API is being queried too quickly, sleep
         sleep( 1 + preg_replace('/\D/', '', $http_response_header[5]) );
       }
       // Try again
       $data = file_get_contents($url, false, $context);
-    }
+    } 
     return $data;
   }
 
@@ -123,7 +126,7 @@ class BuildingOS {
    * @param $debug if set to true will output the URL used
    * @return contents of web page or false if there was an error
    */
-  private function getMeter($meter, $res, $start, $end, $debug = false) {
+  public function getMeter($meter, $res, $start, $end, $debug = false) {
     $start = date('c', $start);
     $end = date('c', $end);
     if ($start === false || $end === false) {
@@ -190,6 +193,7 @@ class BuildingOS {
             ':building_id' => null, // need to fill this in later if inserting into db
             ':source' => 'buildingos',
             ':scope' => $meter_json['data']['scope']['displayName'],
+            ':resource' => $meter_json['data']['resourceType']['displayName'],
             ':name' => $meter_json['data']['displayName'],
             ':url' => $meter_json['data']['url'],
             ':building_url' => $meter_json['data']['building'],
@@ -349,7 +353,7 @@ class BuildingOS {
           }
         }
       }
-      if ($last_recorded !== null && $res === 'live') {
+      if ($last_recorded !== null && $res === 'live' && $meterClass !== null) {
         // Update meters table
         $stmt = $this->db->prepare('UPDATE meters SET current = ? WHERE id = ? LIMIT 1');
         $stmt->execute(array($last_value, $meter_id));
@@ -358,7 +362,7 @@ class BuildingOS {
         // SELECT id, grouping FROM relative_values WHERE meter_uuid = ? AND grouping IS NOT NULL
         $stmt->execute(array($meter_uuid));
         foreach ($stmt->fetchAll() as $rv_row) {
-          $meterClass->updateRelativeValueOfMeter($meter_id, $rv_row['grouping'], $last_value);
+          $meterClass->updateRelativeValueOfMeter($meter_id, $rv_row['grouping']);
         }
       }
       $stmt = $this->db->prepare("UPDATE meters SET {$last_updated_col} = ? WHERE id = ?");
@@ -466,7 +470,7 @@ class BuildingOS {
           $stmt->execute(array($meter[':url']));
           if ($stmt->fetchColumn() === '0') { // meter is not in db
             $meter[':building_id'] = $building_id;
-            $stmt = $this->db->prepare('INSERT INTO meters (bos_uuid, building_id, source, scope, name, url, building_url, units, org_id) VALUES (:bos_uuid, :building_id, :source, :scope, :name, :url, :building_url, :units, :org_id)');
+            $stmt = $this->db->prepare('INSERT INTO meters (bos_uuid, building_id, source, scope, resource, name, url, building_url, units, org_id) VALUES (:bos_uuid, :building_id, :source, :scope, :resource, :name, :url, :building_url, :units, :org_id)');
             $stmt->execute($meter);
           }
         }
