@@ -34,16 +34,19 @@ class TimeSeries extends Meter {
         $this->data[$i]['value'] = floatval($this->data[$i]['value']);
       }
     }
-    $this->data = $this->change_resolution($this->data, 750); // all lines will consist of 750 points
     $this->fill = true;
     $this->dashed = true;
     $this->meter_id = $meter_id;
+    $this->end = $end;
+    $this->start = $start;
+    $this->res = $res;
     $this->circlepoints = array(); // The path for the circle to follow
     $this->points = array(); // The points for the chart
     $this->yaxis = array(); // Contains the y-axis labels
     $this->times = array(); // Contains time lables
     $this->units = null;
     $this->db = $db;
+    $this->data = $this->change_resolution($this->data, 750); // all lines will consist of 750 points
     $this->recorded = array_column($this->data, 'recorded');
     $this->value = array_column($this->data, 'value');
     $this->count = count($this->value);
@@ -60,16 +63,7 @@ class TimeSeries extends Meter {
       }
     }
     if (empty($this->value_null_removed)) {
-      echo "<!--\nCalled with __construct(\$db, $meter_id, $start, $end, $res, $min, $max, $alt_data);\n";
-      var_dump($this->data);
-      echo "-->\n";
-      // echo "<image xlink:href=\"images/error.svg\" x=\"450\" y=\"20\" height=\"200\" width=\"100\" /> ";
-      echo "<text x='350' y='200' font-weight='600' style='fill:#7f8c8d;font-weight:300' font-family='Roboto,Helvetica,sans-serif' font-size='15'>There are no data for meter #{$meter_id}; please select another.</text>";
-      echo "\n<script type='text/javascript'>\n";
-      echo "// <![CDATA[;\n";
-      echo "setTimeout(function(){ window.location.reload(); }, 30000);\n";
-      echo "// ]]>\n</script></svg>";
-      exit();
+      throw new Exception("API sync error for meter {$this->meter_id}");
     }
     // echo "<!--";
     // echo "$meter_id $start $end";
@@ -310,16 +304,32 @@ class TimeSeries extends Meter {
    * Copied from https://stackoverflow.com/a/4014414/2624391
    */
   private function is_array_empty($input) {
-  $result = true;
-  if (is_array($input) && count($input) > 0) {
-    foreach ($input as $val) {
-      $result = $result && $this->is_array_empty($val);
+    $result = true;
+    if (is_array($input) && count($input) > 0) {
+      foreach ($input as $val) {
+        $result = $result && $this->is_array_empty($val);
+      }
+    } else {
+      $result = empty($input);
     }
-  } else {
-    $result = empty($input);
+    return $result;
   }
-  return $result;
-}
+
+  /**
+   * Print error message and exit
+   */
+  public function no_data_msg() {
+    echo "<!--\nCalled with __construct(\$db, $this->meter_id, $this->start, $this->end, $this->res, ...);\n";
+    var_dump($this->data);
+    echo "-->\n";
+    // echo "<image xlink:href=\"images/error.svg\" x=\"450\" y=\"20\" height=\"200\" width=\"100\" /> ";
+    echo "<text x='350' y='200' font-weight='600' style='fill:#7f8c8d;font-weight:300' font-family='Roboto,Helvetica,sans-serif' font-size='15'>There are no data for meter #{$this->meter_id}</text>";
+    echo "\n<script type='text/javascript'>\n";
+    echo "// <![CDATA[;\n";
+    echo "setTimeout(function(){ window.location.reload(); }, 30000);\n";
+    echo "// ]]>\n</script></svg>";
+    exit();
+  }
 
   /**
    * Makes all the timescales have a uniform resolution
@@ -328,10 +338,10 @@ class TimeSeries extends Meter {
    */
   private function change_resolution($data, $result_size) {
     if (count($data) > $result_size) {
-      throw new Exception('Size of $data array must be less than $result_size');
+      throw new LengthException('Size of $data array must be less than $result_size');
     }
     if ($this->is_array_empty($data)) {
-      throw new Exception('$data is empty');
+      throw new Exception("API sync error for meter {$this->meter_id}");
     }
     $return = array();
     for ($i = 0; $i < $result_size; $i++) {
