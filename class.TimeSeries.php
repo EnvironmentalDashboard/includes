@@ -17,16 +17,45 @@ class TimeSeries extends Meter {
    * @param $end time series ends at this date
    * @param $min if not null, the graph will be scaled to this number rather than the datas min
    * @param $max if not null, the graph will be scaled to this number rather than the datas max
-   * @param $alt_data if not null, will be used instead of calling getDataFromTo()
   */
-  public function __construct($db, $meter_id, $start, $end, $res, $min = null, $max = null, $alt_data = null) {
+  public function __construct($db, $meter_id, $start, $end, $res, $min = null, $max = null) {
     parent::__construct($db);
-    if ($res === 'daily') { // dont collect daily data (although it is avail. from api) so have to calc it
-      $this->data = ($alt_data === null) ? parent::getDailyData($meter_id, $start, $end) : $alt_data;
-      // ^ what the fuck is this?
-    }
-    else {
-      $this->data = ($alt_data === null) ? parent::getDataFromTo($meter_id, $start, $end, $res) : $alt_data;
+    $this->fill = true;
+    $this->dashed = true;
+    $this->meter_id = $meter_id;
+    $this->end = $end;
+    $this->start = $start;
+    $this->res = $res;
+    $this->data = array();
+    $this->recorded = array();
+    $this->value = array();
+    $this->count = 0;
+    $this->circlepoints = array(); // The path for the circle to follow
+    $this->points = array(); // The points for the chart
+    $this->yaxis = array(); // Contains the y-axis labels
+    $this->times = array(); // Contains time lables
+    $this->units = null;
+    $this->db = $db;
+    $this->max = null;
+    $this->min = null;
+    $this->baseload = PHP_INT_MAX;
+    $this->peak = 0;
+    $this->pad = 40; // Amount to pad sides of chart in pixels; set to 0 to turn off
+    // $this->pct_thru = $this->convertRange(time(), $start, $end, 0, 100); // What percent the current time is through the time frame
+    // echo "<!--";
+    // echo "$meter_id $start $end";
+    // var_dump($this->data);
+    // echo "-->\n";
+  }
+
+  /**
+   * Fills in the data variables
+   */
+  public function data($alt_data = null) {
+    if ($this->res === 'daily') { // dont collect daily data (although it is avail. from api) so have to calc it
+      $this->data = ($alt_data === null) ? parent::getDailyData($this->meter_id, $this->start, $this->end) : $alt_data;
+    } else {
+      $this->data = ($alt_data === null) ? parent::getDataFromTo($this->meter_id, $this->start, $this->end, $this->res) : $alt_data;
     }
     // PHP doesnt care about types but when printing array with json_encode() strings are printed
     for ($i = 0; $i < count($this->data); $i++) { 
@@ -34,41 +63,19 @@ class TimeSeries extends Meter {
         $this->data[$i]['value'] = floatval($this->data[$i]['value']);
       }
     }
-    $this->fill = true;
-    $this->dashed = true;
-    $this->meter_id = $meter_id;
-    $this->end = $end;
-    $this->start = $start;
-    $this->res = $res;
-    $this->circlepoints = array(); // The path for the circle to follow
-    $this->points = array(); // The points for the chart
-    $this->yaxis = array(); // Contains the y-axis labels
-    $this->times = array(); // Contains time lables
-    $this->units = null;
-    $this->db = $db;
     $this->data = $this->change_resolution($this->data, 750); // all lines will consist of 750 points
     $this->recorded = array_column($this->data, 'recorded');
     $this->value = array_column($this->data, 'value');
     $this->count = count($this->value);
-    $this->max = null;
-    $this->min = null;
-    $this->baseload = PHP_INT_MAX;
-    $this->peak = 0;
-    $this->pad = 40; // Amount to pad sides of chart in pixels; set to 0 to turn off
-    // $this->pct_thru = $this->convertRange(time(), $start, $end, 1, 100); // What percent the current time is through the time frame
-    $this->value_null_removed = array();
-    for ($i = 0; $i < count($this->value); $i++) { 
-      if ($this->value[$i] !== null) {
-        $this->value_null_removed[] = $this->value[$i];
-      }
-    }
-    if (empty($this->value_null_removed)) {
-      throw new Exception("API sync error for meter {$this->meter_id}");
-    }
-    // echo "<!--";
-    // echo "$meter_id $start $end";
-    // var_dump($this->data);
-    // echo "-->\n";
+    // $this->value_null_removed = array();
+    // for ($i = 0; $i < count($this->value); $i++) { 
+    //   if ($this->value[$i] !== null) {
+    //     $this->value_null_removed[] = $this->value[$i];
+    //   }
+    // }
+    // if (empty($this->value_null_removed)) {
+    //   $this->no_data_msg();
+    // }
   }
 
   /**
@@ -134,18 +141,18 @@ class TimeSeries extends Meter {
     }
     echo "' />";
     // After we've printed the chart, replace all the null values with the first previous non null value for charachter animation
-    $last_non_null = $this->value[0];
-    $i = 1;
-    while ($last_non_null === null) {
-      $last_non_null = $this->value[$i++];
-    }
-    for ($i = 0; $i < count($this->value); $i++) { // count($this->data) === count($this->value)
-      if ($this->value[$i] === null) {
-        $this->value[$i] = $last_non_null;
-      } else {
-        $last_non_null = $this->value[$i];
-      }
-    }
+    // $last_non_null = $this->value[0];
+    // $i = 1;
+    // while ($last_non_null === null) {
+    //   $last_non_null = $this->value[$i++];
+    // }
+    // for ($i = 0; $i < count($this->value); $i++) { // count($this->data) === count($this->value)
+    //   if ($this->value[$i] === null) {
+    //     $this->value[$i] = $last_non_null;
+    //   } else {
+    //     $last_non_null = $this->value[$i];
+    //   }
+    // }
   }
 
   /**
@@ -194,9 +201,9 @@ class TimeSeries extends Meter {
   public function color($color) { $this->color = $color; }
   public function stroke_width($stroke_width) { $this->stroke_width = $stroke_width; }
   public function setMax($max = null) {
-    $this->max = ($max === null) ? max($this->value_null_removed) : $max; }
+    $this->max = ($max === null) ? max($this->value) : $max; }
   public function setMin($min = null) {
-    $this->min = ($min === null) ? min($this->value_null_removed) : $min; }
+    $this->min = ($min === null) ? min(array_filter($this->value)) : $min; }
 
   /**
    * Sets the y-axis
@@ -320,7 +327,7 @@ class TimeSeries extends Meter {
    */
   public function no_data_msg() {
     echo "<!--\nCalled with __construct(\$db, $this->meter_id, $this->start, $this->end, $this->res, ...);\n";
-    var_dump($this->data);
+    print_r($this->data);
     echo "-->\n";
     // echo "<image xlink:href=\"images/error.svg\" x=\"450\" y=\"20\" height=\"200\" width=\"100\" /> ";
     echo "<text x='350' y='200' font-weight='600' style='fill:#7f8c8d;font-weight:300' font-family='Roboto,Helvetica,sans-serif' font-size='15'>There are no data for meter #{$this->meter_id}</text>";
