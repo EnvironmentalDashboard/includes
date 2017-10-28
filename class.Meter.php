@@ -23,8 +23,22 @@ class Meter {
    * @param  $min new min of range
    * @param  $max new max of range
    */
-  public function scale($pct, $min, $max) {
+  public static function scale($pct, $min, $max) {
     return ($pct / 100) * ($max - $min) + $min;
+  }
+
+  /**
+   * Scales a number from an old range to a new range
+   */
+  public static function convertRange($val, $old_min, $old_max, $new_min, $new_max) {
+    if (!is_numeric($val) || !is_numeric($old_min) || !is_numeric($old_max) || !is_numeric($new_min) || !is_numeric($new_max)) {
+      throw new Exception('All arguments to convertRange must be numeric');
+      
+    }
+    if ($old_max == $old_min) {
+      return 0;
+    }
+    return ((($new_max - $new_min) * ($val - $old_min)) / ($old_max - $old_min)) + $new_min;
   }
 
   /**
@@ -37,7 +51,7 @@ class Meter {
    * @param $max value to scale to
    * @return $relative value
    */
-  public function relativeValue($typical, $current, $min = 0, $max = 100) {
+  public static function relativeValue($typical, $current, $min = 0, $max = 100) {
     array_push($typical, $current);
     sort($typical, SORT_NUMERIC);
     $index = array_search($current, $typical);
@@ -52,7 +66,7 @@ class Meter {
       $index += floor($occurrances / 2);
     }
     $relative_value = ($index / (count($typical)-1)) * 100; // Get percent (0-100)
-    return $this->scale($relative_value, $min, $max); // Scale to $min and $max and return
+    return self::scale($relative_value, $min, $max); // Scale to $min and $max and return
   }
 
   /**

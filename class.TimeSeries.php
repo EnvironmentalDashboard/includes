@@ -67,6 +67,9 @@ class TimeSeries extends Meter {
     $this->recorded = array_column($this->data, 'recorded');
     $this->value = array_column($this->data, 'value');
     $this->count = count($this->value);
+    if ($this->count === 0) {
+      $this->no_data_msg();
+    }
     // $this->value_null_removed = array();
     // for ($i = 0; $i < count($this->value); $i++) { 
     //   if ($this->value[$i] !== null) {
@@ -121,6 +124,7 @@ class TimeSeries extends Meter {
     echo "points='";
     foreach ($this->value as $point) {
       if ($point === null) {
+        array_push($this->circlepoints, array($x, $y));
         echo "' /><polyline fill='none' stroke='{$this->color}' stroke-width='2' ";
         echo ($this->dashed) ? "stroke-dasharray='10,10' " : '';
         echo "points='";
@@ -153,16 +157,6 @@ class TimeSeries extends Meter {
     //     $last_non_null = $this->value[$i];
     //   }
     // }
-  }
-
-  /**
-   * Scales a number from an old range to a new range
-   */
-  public function convertRange($val, $old_min, $old_max, $new_min, $new_max) {
-    if ($old_max == $old_min) {
-      return 0;
-    }
-    return ((($new_max - $new_min) * ($val - $old_min)) / ($old_max - $old_min)) + $new_min;
   }
 
   /**
@@ -344,7 +338,8 @@ class TimeSeries extends Meter {
    * $result_size size of returned array
    */
   private function change_resolution($data, $result_size) {
-    if (count($data) > $result_size) {
+    $count = count($data);
+    if ($count > $result_size) {
       throw new LengthException('Size of $data array must be less than $result_size');
     }
     if ($this->is_array_empty($data)) {
@@ -352,7 +347,7 @@ class TimeSeries extends Meter {
     }
     $return = array();
     for ($i = 0; $i < $result_size; $i++) {
-      $index_fraction = $this->convertRange($i, 0, $result_size-1, 0, count($data)-1);
+      $index_fraction = $this->convertRange($i, 0, $result_size-1, 0, $count-1);
       $floor = floor($index_fraction); // index of current data point
       $ceil = ceil($index_fraction); // index of next point
       $current_point = $data[$floor]['value'];
