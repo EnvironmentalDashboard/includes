@@ -51,7 +51,7 @@ class TimeSeries extends Meter {
   /**
    * Fills in the data variables
    */
-  public function data($alt_data = null) {
+  public function data($alt_data = null, $ppl = 750) {
     if ($this->res === 'daily') { // dont collect daily data (although it is avail. from api) so have to calc it
       $this->data = ($alt_data === null) ? parent::getDailyData($this->meter_id, $this->start, $this->end) : $alt_data;
     } else {
@@ -63,7 +63,7 @@ class TimeSeries extends Meter {
         $this->data[$i]['value'] = floatval($this->data[$i]['value']);
       }
     }
-    $this->data = $this->change_resolution($this->data, 750); // all lines will consist of 750 points
+    $this->data = $this->change_resolution($this->data, $ppl); // all lines will consist of $ppl points
     $this->recorded = array_column($this->data, 'recorded');
     $this->value = array_column($this->data, 'value');
     $this->count = count($this->value);
@@ -215,8 +215,8 @@ class TimeSeries extends Meter {
     // Output will be an array of the Y axis values that
     // encompass the Y values.
     if ($this->min === null || $this->max === null) {
-      debug_print_backtrace();
-      die("Need to set min/max before calling yAxis()\nmeter_id: {$this->meter_id}\n");
+      echo "<!--Need to set min/max before calling yAxis()-->";
+      $this->no_data_msg();
     }
     $yMax = $this->max;
     $yMin = $this->min;

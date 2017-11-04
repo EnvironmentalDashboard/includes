@@ -52,6 +52,10 @@ class Meter {
    * @return $relative value
    */
   public static function relativeValue($typical, $current, $min = 0, $max = 100) {
+    $count = count($typical);
+    if ($count === 0) {
+      return 0;
+    }
     array_push($typical, $current);
     sort($typical, SORT_NUMERIC);
     $index = array_search($current, $typical);
