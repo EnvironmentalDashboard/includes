@@ -3,6 +3,16 @@ require 'class.Meter.php';
 
 /**
  * For the time series
+ * Example usage
+ $test_ts = new TimeSeries($db, $_GET['meter_id'], $from, $now, $res);
+ $test_ts->data($line);
+ $test_ts->dashed(false);
+ $test_ts->fill(false);
+ $test_ts->color('red');
+ $test_ts->setMin($min);
+ $test_ts->setMax($max);
+ $test_ts->yAxis();
+ $test_ts->printChart($graph_height, $graph_width, $graph_offset, $test_ts->yaxis_min, $test_ts->yaxis_max);
  *
  * @author Tim Robert-Fitzgerald September 2016
  */

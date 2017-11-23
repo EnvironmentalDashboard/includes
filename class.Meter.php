@@ -2,7 +2,8 @@
 date_default_timezone_set("America/New_York");
 /**
  * For retrieving meter data from the database
- * The most important method is updateRelativeValueOfMeter() which is used by the daemons to update a meters relative value
+ * updateRelativeValueOfMeter() was used by the daemons to update a meters relative value and was most of the reason for this class
+ * but now that is taken care of by the C daemons
  *
  * @author Tim Robert-Fitzgerald
  */
@@ -71,33 +72,6 @@ class Meter {
     }
     $relative_value = ($index / (count($typical)-1)) * 100; // Get percent (0-100)
     return self::scale($relative_value, $min, $max); // Scale to $min and $max and return
-  }
-
-  /**
-   * Gets the cached relative value. See ~/scripts/cron.php for more info
-   * @param  [type] $meter_uuid [description]
-   * @return [type]           [description]
-   */
-  public function relativeValueOfCachedMeter($meter_uuid, $perm = null, $min = 0, $max = 100) {
-    if ($perm === null) {
-      $stmt = $this->db->prepare('SELECT relative_value FROM relative_values WHERE meter_uuid = ? LIMIT 1');
-      $stmt->execute(array($meter_uuid));
-    } else {
-      $stmt = $this->db->prepare('SELECT relative_value FROM relative_values WHERE meter_uuid = ? AND permission = ? LIMIT 1');
-      $stmt->execute(array($meter_uuid, $perm));
-    }
-    return ($stmt->fetchColumn() / 100) * ($max - $min) + $min;
-  }
-
-  /**
-   * Gets the cached relative value. See ~/scripts/cron.php for more info
-   * @param  [type] $meter_id [description]
-   * @return [type]           [description]
-   */
-  public function relativeValueOfCachedMeterById($meter_id, $min = 0, $max = 100) {
-    $stmt = $this->db->prepare('SELECT relative_value FROM relative_values WHERE meter_uuid IN (SELECT bos_uuid FROM meters WHERE id = ?) LIMIT 1');
-    $stmt->execute(array($meter_id));
-    return ($stmt->fetchColumn() / 100) * ($max - $min) + $min;
   }
 
   /**
@@ -246,35 +220,6 @@ class Meter {
       AS T1 ORDER BY recorded ASC');
     $stmt->execute(array($meter_id, $res));
     return $stmt->fetchAll();
-  }
-
-  /**
-   * Fetches data using a meter URL by fetching the URLs id and calling getDataFromTo()
-   *
-   * @param $meter_url is the URL of the meter
-   * @param $from is the unix timestamp for the starting period of the data
-   * @param $to is the unix timestamp for the ending period of the data
-   * @return Multidimensional array indexed with 'value' for the reading and 'recorded' for the time the reading was recorded
-   */
-  public function getDataByMeterURL($meter_url, $from, $to, $res = null) {
-    $stmt = $this->db->prepare('SELECT id FROM meters WHERE url = ? LIMIT 1');
-    $stmt->execute(array($meter_url));
-    $meter_id = $stmt->fetch()['id'];
-    return $this->getDataFromTo($meter_id, $from, $to, $res);
-  }
-  /**
-   * Fetches data using a meter UUID by fetching the id and calling getDataFromTo()
-   *
-   * @param $uuid is the UUID of the meter
-   * @param $from is the unix timestamp for the starting period of the data
-   * @param $to is the unix timestamp for the ending period of the data
-   * @return Multidimensional array indexed with 'value' for the reading and 'recorded' for the time the reading was recorded
-   */
-  public function getDataByUUID($uuid, $from, $to, $res = null) {
-    $stmt = $this->db->prepare('SELECT id FROM meters WHERE bos_uuid = ? LIMIT 1');
-    $stmt->execute(array($uuid));
-    $meter_id = $stmt->fetch()['id'];
-    return $this->getDataFromTo($meter_id, $from, $to, $res);
   }
 
   /**
