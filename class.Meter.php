@@ -199,11 +199,11 @@ class Meter {
     }
     if ($null) {
       $stmt = $this->db->prepare('SELECT value, recorded FROM meter_data
-        WHERE meter_id = ? AND resolution = ? AND recorded > ? AND recorded < ?
+        WHERE meter_id = ? AND resolution = ? AND recorded >= ? AND recorded <= ?
         ORDER BY recorded ASC');
     } else {
       $stmt = $this->db->prepare('SELECT value, recorded FROM meter_data
-        WHERE meter_id = ? AND resolution = ? AND recorded > ? AND recorded < ? AND value IS NOT NULL
+        WHERE meter_id = ? AND resolution = ? AND recorded >= ? AND recorded <= ? AND value IS NOT NULL
         ORDER BY recorded ASC');
     }
     $stmt->execute(array($meter_id, $res, $from, $to));
