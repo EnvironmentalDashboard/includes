@@ -343,6 +343,17 @@ class Meter {
    * @param  Int $meter_id
    * @return String units
    */
+  public function getResourceType($meter_id) {
+    $stmt = $this->db->prepare('SELECT resource FROM meters WHERE id = ? LIMIT 1');
+    $stmt->execute(array($meter_id));
+    return $stmt->fetchColumn();
+  }
+
+  /**
+   * Gets units for meter
+   * @param  Int $meter_id
+   * @return String units
+   */
   public function getBuildingName($meter_id) {
     $stmt = $this->db->prepare('SELECT name FROM buildings WHERE id IN (SELECT building_id FROM meters WHERE id = ?) LIMIT 1');
     $stmt->execute(array($meter_id));

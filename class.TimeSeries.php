@@ -181,7 +181,7 @@ class TimeSeries extends Meter {
   /**
    * Gets the meter name
    */
-  public function getName() {
+  public function getMeterName() {
     $stmt = $this->db->prepare('SELECT name FROM meters WHERE id = ? LIMIT 1');
     $stmt->execute(array($this->meter_id));
     return $stmt->fetch()['name'];
@@ -207,7 +207,17 @@ class TimeSeries extends Meter {
   public function setMax($max = null) {
     $this->max = ($max === null) ? max($this->value) : $max; }
   public function setMin($min = null) {
-    $this->min = ($min === null) ? min(array_filter($this->value)) : $min; }
+    if ($min !== null) {
+      $this->min = $min;
+    } else {
+      $no_null = array_filter($this->value);
+      if (empty($no_null)) {
+        $this->min = 0;
+      } else {
+        $this->min = min($no_null);
+      }
+    }
+  }
 
   /**
    * Sets the y-axis
