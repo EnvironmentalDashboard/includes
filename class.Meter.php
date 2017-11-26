@@ -193,13 +193,19 @@ class Meter {
    * @param $to is the unix timestamp for the ending period of the data
    * @return Multidimensional array indexed with 'value' for the reading and 'recorded' for the time the reading was recorded
    */
-  public function getDataFromTo($meter_id, $from, $to, $res = null) {
+  public function getDataFromTo($meter_id, $from, $to, $res = null, $null = true) {
     if ($res === null) {
       $res = $this->pickResolution($from);
     }
-    $stmt = $this->db->prepare('SELECT value, recorded FROM meter_data
-      WHERE meter_id = ? AND resolution = ? AND recorded > ? AND recorded < ?
-      ORDER BY recorded ASC');
+    if ($null) {
+      $stmt = $this->db->prepare('SELECT value, recorded FROM meter_data
+        WHERE meter_id = ? AND resolution = ? AND recorded > ? AND recorded < ?
+        ORDER BY recorded ASC');
+    } else {
+      $stmt = $this->db->prepare('SELECT value, recorded FROM meter_data
+        WHERE meter_id = ? AND resolution = ? AND recorded > ? AND recorded < ? AND value IS NOT NULL
+        ORDER BY recorded ASC');
+    }
     $stmt->execute(array($meter_id, $res, $from, $to));
     return $stmt->fetchAll();
   }
@@ -318,8 +324,29 @@ class Meter {
   public function getUnits($meter_id) {
     $stmt = $this->db->prepare('SELECT units FROM meters WHERE id = ? LIMIT 1');
     $stmt->execute(array($meter_id));
-    $result = $stmt->fetch();
-    return $result['units'];
+    return $stmt->fetchColumn();
+  }
+
+  /**
+   * Gets units for meter
+   * @param  Int $meter_id
+   * @return String units
+   */
+  public function getName($meter_id) {
+    $stmt = $this->db->prepare('SELECT name FROM meters WHERE id = ? LIMIT 1');
+    $stmt->execute(array($meter_id));
+    return $stmt->fetchColumn();
+  }
+
+  /**
+   * Gets units for meter
+   * @param  Int $meter_id
+   * @return String units
+   */
+  public function getBuildingName($meter_id) {
+    $stmt = $this->db->prepare('SELECT name FROM buildings WHERE id IN (SELECT building_id FROM meters WHERE id = ?) LIMIT 1');
+    $stmt->execute(array($meter_id));
+    return $stmt->fetchColumn();
   }
 
   /**
