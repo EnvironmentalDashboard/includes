@@ -1,6 +1,4 @@
-db.php
 test*
 *.zip
 .DS_Store
 class.OpenWeatherMap.php
-old_rv_methods
