@@ -2,9 +2,9 @@
 $dbname = 'oberlin_environmentaldashboard';
 $production_server = (posix_uname()['nodename'] === 'environmentaldashboard.org');
 if ($production_server) { // mysql server is on same machine as web server
-  require '../secret/local.php';
+  require '/var/www/repos/secret/local.php';
 } else { // connect to mysql server remotely
-  require '../secret/remote.php';
+  require '/var/www/repos/secret/remote.php';
 }
 
 try {
@@ -13,6 +13,7 @@ try {
   $db->setAttribute(PDO::ATTR_DEFAULT_FETCH_MODE, PDO::FETCH_ASSOC);
 }
 catch (PDOException $e) { die($e->getMessage()); }
+
 
 // if (isset($_SERVER['REQUEST_URI']) && $production_server) { // The browser sets REQUEST_URI, so it will not be set for scripts run on command line
 //   $stmt = $db->prepare('SELECT id FROM users WHERE slug = ?');
