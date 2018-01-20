@@ -2,9 +2,9 @@
 $dbname = 'oberlin_environmentaldashboard';
 $production_server = (posix_uname()['nodename'] === 'environmentaldashboard.org');
 if ($production_server) { // mysql server is on same machine as web server
-  require '/var/www/repos/secret/local.php';
+  require '/root/secret/local.php';
 } else { // connect to mysql server remotely
-  require '/var/www/repos/secret/remote.php';
+  require '/root/secret/remote.php';
 }
 
 try {
