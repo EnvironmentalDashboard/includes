@@ -4,7 +4,7 @@ $production_server = (posix_uname()['nodename'] === 'environmentaldashboard.org'
 if ($production_server) { // mysql server is on same machine as web server
   require '/var/secret/local.php';
 } else { // connect to mysql server remotely
-  require '/var/secret/remote.php';
+  require '/Applications/MAMP/htdocs/repos/secret/remote.php';
 }
 
 try {
@@ -15,12 +15,15 @@ try {
 catch (PDOException $e) { die($e->getMessage()); }
 
 
-// if (isset($_SERVER['REQUEST_URI']) && $production_server) { // The browser sets REQUEST_URI, so it will not be set for scripts run on command line
-//   $stmt = $db->prepare('SELECT id FROM users WHERE slug = ?');
-//   $stmt->execute(array(explode('/', $_SERVER['REQUEST_URI'])[1]));
-//   $user_id = intval($stmt->fetchColumn());
-// } else {
-//   $user_id = 1; // Default to Oberlin
-// }
-$user_id = 1;
+if (isset($_SERVER['REQUEST_URI']) && $production_server) { // The browser sets REQUEST_URI, so it will not be set for scripts run on command line
+  $stmt = $db->prepare('SELECT id FROM users WHERE slug = ?');
+  $stmt->execute(array(explode('/', $_SERVER['REQUEST_URI'])[1]));
+  if ($stmt->rowCount() === 0) {
+  	$user_id = 1;
+  } else {
+  	$user_id = intval($stmt->fetchColumn());
+  }
+} else {
+  $user_id = 1; // Default to Oberlin
+}
 ?>
