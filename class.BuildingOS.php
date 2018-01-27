@@ -78,7 +78,7 @@ class BuildingOS {
    * @param $debug if set to true will output the URL used
    * @return contents of web page or false if there was an error
    */
-  private function makeCall($url, $debug = false) {
+  public function makeCall($url, $debug = false) {
     if ($debug) {
       echo "URL: {$url}\n\n";
     }
