@@ -360,6 +360,12 @@ class Meter {
     return $stmt->fetchColumn();
   }
 
+  public function getBuildingImage($meter_id) {
+    $stmt = $this->db->prepare('SELECT custom_img FROM buildings WHERE id IN (SELECT building_id FROM meters WHERE id = ?) LIMIT 1');
+    $stmt->execute(array($meter_id));
+    return $stmt->fetchColumn();
+  }
+
   /**
    * Picks the resolution based on what is stored in the database
    *
