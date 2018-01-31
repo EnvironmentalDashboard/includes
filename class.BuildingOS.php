@@ -297,6 +297,22 @@ class BuildingOS {
     }
   }
 
+  public function resetMeter($meter_id, $resolution) {
+    $stmt = $this->db->prepare("SELECT url FROM meters WHERE id = ?");
+    $stmt->execute([$meter_id]);
+    $url = $stmt->fetchColumn() . '/data';
+    $json = json_decode($this->getMeter($url, $resolution, $this->pickAmount($resolution), time()), true)['data'];
+    if (is_array($json) && count($json) > 0) {
+      $stmt = $this->db->prepare('DELETE FROM meter_data WHERE meter_id = ? AND resolution = ?');
+      $stmt->execute([$meter_id, $resolution]);
+      foreach ($json as $row) {
+        $stmt = $this->db->prepare('REPLACE INTO meter_data (meter_id, value, recorded, resolution) VALUES (?, ?, ?, ?)');
+        $stmt->execute([$meter_id, $row['value'], strtotime($row['localtime']), $resolution]);
+      }
+    }
+    return $json;
+  }
+
   /**
    * Used by daemons to update individual meters
    */
