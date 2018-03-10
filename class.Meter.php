@@ -83,10 +83,10 @@ class Meter {
    * @param  $grouping Example JSON: [{"days":[1,2,3,4,5],"npoints":8},{"days":[1,7],"start":"-2 weeks"}]
    * @param  $current
    */
-  public function updateRelativeValueOfMeter($meter_id, $grouping, $current = null, $debug = false) {
-    if ($debug) {
-      $log = array('Grouping' => $grouping);
-    }
+  public function updateRelativeValueOfMeter($meter_id, $grouping, $current = null, $dry_run = false) {
+    // if ($dry_run) {
+    //   $log = array('grouping' => $grouping);
+    // }
     $day_of_week = date('w') + 1; // https://dev.mysql.com/doc/refman/5.5/en/date-and-time-functions.html#function_dayofweek
     foreach (json_decode($grouping, true) as $group) {
       if (in_array($day_of_week, $group['days'])) {
@@ -108,13 +108,19 @@ class Meter {
         if (array_key_exists('npoints', $group)) {
           $amount = intval($group['npoints']);
           $days = implode(',', array_map('intval', $group['days'])); // prevent sql injection with intval as we're concatenating directly into query
-          if ($debug) { // also grab recorded col for verification
+          if ($dry_run) { // also grab recorded col for verification
             $stmt = $this->db->prepare(
             "SELECT value, FROM_UNIXTIME(recorded, '%W, %M %D, %h:%i %p') AS `time` FROM meter_data
             WHERE meter_id = ? AND value IS NOT NULL AND resolution = ?
             AND HOUR(FROM_UNIXTIME(recorded)) = HOUR(NOW())
             AND DAYOFWEEK(FROM_UNIXTIME(recorded)) IN ({$days})
             ORDER BY recorded DESC LIMIT " . $amount);
+            // echo "SELECT value, FROM_UNIXTIME(recorded, '%W, %M %D, %h:%i %p') AS `time` FROM meter_data
+            // WHERE meter_id = ? AND value IS NOT NULL AND resolution = ?
+            // AND HOUR(FROM_UNIXTIME(recorded)) = HOUR(NOW())
+            // AND DAYOFWEEK(FROM_UNIXTIME(recorded)) IN ({$days})
+            // ORDER BY recorded DESC LIMIT " . $amount;
+            // var_dump(array($meter_id, 'hour'));
           } else {
             $stmt = $this->db->prepare(
             "SELECT value FROM meter_data
@@ -125,14 +131,14 @@ class Meter {
           }
           $stmt->execute(array($meter_id, 'hour'));
           $typical = $stmt->fetchAll();
-          if ($debug) {
-            $log['Typical data'] = var_export($typical, true);
-            $log['Current reading'] = $current;
+          if ($dry_run) {
+            $log['typical'] = json_encode($typical);
+            $log['current'] = $current;
           }
           $typical = array_map('floatval', array_column($typical, 'value'));
           $relative_value = $this->relativeValue($typical, $current);
-          if ($debug) {
-            $log['Relative value'] = $relative_value;
+          if ($dry_run) {
+            $log['relative_value'] = $relative_value;
           }
         } else if (array_key_exists('start', $group)) {
           $amount = strtotime($group['start']);
@@ -140,7 +146,7 @@ class Meter {
             throw new Exception("{$group['start']} is not a parseable date");
           }
           $days = implode(',', array_map('intval', $group['days']));
-          if ($debug) {
+          if ($dry_run) {
             $stmt = $this->db->prepare(
               "SELECT value, FROM_UNIXTIME(recorded, '%W, %M %D, %h:%i %p') AS `time` FROM meter_data
               WHERE meter_id = ? AND value IS NOT NULL
@@ -159,24 +165,21 @@ class Meter {
           }
           $stmt->execute(array($meter_id, $amount, time(), 'hour'));
           $typical = $stmt->fetchAll();
-          if ($debug) {
-            $log['Typical data'] = var_export($typical, true);
-            $log['Current reading'] = $current;
+          if ($dry_run) {
+            $log['typical'] = json_encode($typical);
+            $log['current'] = $current;
           }
           $typical = array_map('floatval', array_column($typical, 'value'));
           $relative_value = $this->relativeValue($typical, $current);
-          if ($debug) {
-            $log['Relative value'] = $relative_value;
+          if ($dry_run) {
+            $log['relative_value'] = $relative_value;
           }
         }
-        $uuid = $this->IDtoUUID($meter_id);
-        $stmt = $this->db->prepare('UPDATE relative_values SET relative_value = ? WHERE meter_uuid = ? AND grouping = ?');
-        $stmt->execute(array(round($relative_value), $uuid, $grouping));
-        // $rows_updated = $stmt->rowCount(); // if $relative_value doesnt change, it doesnt increment rowCount()
-        if ($debug) {
-          $rows_updated = $this->db->prepare('SELECT COUNT(*) FROM relative_values WHERE meter_uuid = ? AND grouping = ?');
-          $rows_updated->execute(array($uuid, $grouping));
-          $log['Relative value configurations updated'] = $rows_updated->fetchColumn();
+        if (!$dry_run) {
+          $uuid = $this->IDtoUUID($meter_id);
+          $stmt = $this->db->prepare('UPDATE relative_values SET relative_value = ? WHERE meter_uuid = ? AND grouping = ?');
+          $stmt->execute(array(round($relative_value), $uuid, $grouping));
+        } else {
           echo json_encode($log);
         }
         return true;
