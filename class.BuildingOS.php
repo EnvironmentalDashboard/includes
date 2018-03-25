@@ -362,11 +362,17 @@ class BuildingOS {
       foreach ($meter_data as $data) { // Insert new data
         $localtime = strtotime($data['localtime']);
         if ($localtime > $last_recording) { // just to make sure
-          $stmt = $this->db->prepare('INSERT INTO meter_data (meter_id, value, recorded, resolution) VALUES (?, ?, ?, ?)');
-          $stmt->execute(array($meter_id, $data['value'], $localtime, $res));
-          if ($data['value'] !== null) {
-            $last_value = $data['value'];
-            $last_recorded = $localtime;
+          try {
+            $new_row = array($meter_id, $data['value'], $localtime, $res);
+            $stmt = $this->db->prepare('INSERT INTO meter_data (meter_id, value, recorded, resolution) VALUES (?, ?, ?, ?)');
+            $stmt->execute($new_row);
+            if ($data['value'] !== null) {
+              $last_value = $data['value'];
+              $last_recorded = $localtime;
+            }
+          } catch (PDOException $e) {
+            echo $e->getMessage() . "\n";
+            var_dump($new_row);
           }
         }
       }
