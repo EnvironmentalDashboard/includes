@@ -447,7 +447,7 @@ class BuildingOS {
         // $building is now guaranteed to be a row in the db
         if ($delete_not_found) { // delete meters not found in $buildings['meters']
           $bos_uuids = array_column($building['meters'], ':bos_uuid');
-          foreach ($this->db->query('SELECT id, bos_uuid FROM meters WHERE building_id = ' . intval($building_id)) as $meter) {
+          foreach ($this->db->query('SELECT id, bos_uuid FROM meters WHERE source = \'buildingos\' AND building_id = ' . intval($building_id)) as $meter) {
             if (!in_array($meter['bos_uuid'], $bos_uuids)) {
               $stmt = $this->db->prepare('DELETE FROM meters WHERE bos_uuid = ?');
               $stmt->execute(array($meter['bos_uuid']));
