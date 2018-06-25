@@ -14,16 +14,17 @@ try {
 }
 catch (PDOException $e) { die($e->getMessage()); }
 
-
+$user_id = 1; // Default to Oberlin
 if (isset($_SERVER['REQUEST_URI']) && $production_server) { // The browser sets REQUEST_URI, so it will not be set for scripts run on command line
+  $symlink = explode('/', $_SERVER['REQUEST_URI'])[1];
   $stmt = $db->prepare('SELECT id FROM users WHERE slug = ?');
-  $stmt->execute(array(explode('/', $_SERVER['REQUEST_URI'])[1]));
-  if ($stmt->rowCount() === 0) {
-  	$user_id = 1;
-  } else {
+  $stmt->execute(array($symlink));
+  if ($stmt->rowCount() === 1) {
   	$user_id = intval($stmt->fetchColumn());
+  } else {
+    $symlink = 'oberlin';
   }
 } else {
-  $user_id = 1; // Default to Oberlin
+  $symlink = 'oberlin';
 }
 ?>
