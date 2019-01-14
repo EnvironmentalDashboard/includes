@@ -1,6 +1,6 @@
 <?php
 $dbname = 'oberlin_environmentaldashboard';
-$production_server = (posix_uname()['nodename'] === 'environmentaldashboard');
+$production_server = (posix_uname()['nodename'] === 'environmentaldashboard.org');
 if ($production_server) { // mysql server is on same machine as web server
   require '/var/secret/local.php';
 } else { // connect to mysql server remotely
@@ -27,4 +27,3 @@ if (isset($_SERVER['REQUEST_URI']) && $production_server) { // The browser sets 
 } else {
   $symlink = 'oberlin';
 }
-?>
