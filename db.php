@@ -1,6 +1,15 @@
 <?php
 $dbname = 'oberlin_environmentaldashboard';
-$production_server = (posix_uname()['nodename'] === 'environmentaldashboard.org');
+$production_server_domain = 'environmentaldashboard.org';
+
+// Find the dnsdomainname from the FQDN
+$fqdn = posix_uname()['nodename'];
+$split_fqdn = explode('.', $fqdn, 2);
+
+$dnsdomainname = sizeof($split_fqdn) > 1 ? $split_fqdn[1] : $fqdn;
+
+$production_server = ($dnsdomainname === $production_server_domain || $fqdn === $production_server_domain);
+
 if ($production_server) { // mysql server is on same machine as web server
   require '/var/secret/local.php';
 } else { // connect to mysql server remotely
