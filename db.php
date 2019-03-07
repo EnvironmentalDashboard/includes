@@ -25,14 +25,14 @@ catch (PDOException $e) { die($e->getMessage()); }
 
 $user_id = 1; // Default to Oberlin
 if (isset($_SERVER['REQUEST_URI']) && $production_server) { // The browser sets REQUEST_URI, so it will not be set for scripts run on command line
-  $symlink = explode('/', $_SERVER['REQUEST_URI'])[1];
+  $subdomain = explode('.', $_SERVER['HTTP_HOST'])[0];
   $stmt = $db->prepare('SELECT id FROM users WHERE slug = ?');
-  $stmt->execute(array($symlink));
+  $stmt->execute(array($subdomain));
   if ($stmt->rowCount() === 1) {
   	$user_id = intval($stmt->fetchColumn());
   } else {
-    $symlink = 'oberlin';
+    $subdomain = 'oberlin';
   }
 } else {
-  $symlink = 'oberlin';
+  $subdomain = 'oberlin';
 }
