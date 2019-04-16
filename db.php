@@ -13,7 +13,7 @@ $production_server = ($dnsdomainname === $production_server_domain || $fqdn === 
 if ($production_server) { // mysql server is on same machine as web server
   require '/var/secret/local.php';
 } else { // connect to mysql server remotely
-  require '/var/www/html/repos/secret/remote.php';
+  require '/var/secret/remote.php';
 }
 
 try {
